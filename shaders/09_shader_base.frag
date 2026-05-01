@@ -59,11 +59,11 @@ float mapScene(vec3 p3) {
     // primary rotation: XW plane (single-angle rotation)
     p = rotXW(p, aXW);
     // optional extra rotations (uncomment to enable double/compound rotation)
-    // p = rotXY(p, aXY);
-    // p = rotXZ(p, aXZ);
-    // p = rotYZ(p, aYZ);
-    // p = rotYW(p, aYW);
-    // p = rotZW(p, aZW);
+    //p = rotXY(p, aXY);
+    //p = rotXZ(p, aXZ);
+    //p = rotYZ(p, aYZ);
+    //p = rotYW(p, aYW);
+    //p = rotZW(p, aZW);
 
     // hyperbox half-sizes in 4D
     vec4 halfSize = vec4(0.9, 0.6, 0.4, 0.3);
