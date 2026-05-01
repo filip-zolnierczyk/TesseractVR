@@ -1,0 +1,6 @@
+build/
+build-*/
+out/
+.vs/
+.vscode/
+vcpkg_installed/
