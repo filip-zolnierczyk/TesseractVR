@@ -56,14 +56,13 @@ float mapScene(vec3 p3) {
     float aYW = t * 0.5;
     float aZW = t * 0.15;
 
-    // primary rotation: XW plane (single-angle rotation)
+    // compound 4D rotations to reveal the tesseract structure
     p = rotXW(p, aXW);
-    // optional extra rotations (uncomment to enable double/compound rotation)
-    //p = rotXY(p, aXY);
-    //p = rotXZ(p, aXZ);
-    //p = rotYZ(p, aYZ);
-    //p = rotYW(p, aYW);
-    //p = rotZW(p, aZW);
+    p = rotXY(p, aXY);
+    p = rotXZ(p, aXZ);
+    p = rotYZ(p, aYZ);
+    p = rotYW(p, aYW);
+    p = rotZW(p, aZW);
 
     // hyperbox half-sizes in 4D
     vec4 halfSize = vec4(0.9, 0.6, 0.4, 0.3);
