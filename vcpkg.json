@@ -1,0 +1,8 @@
+{
+  "name": "tesseractvr",
+  "version-string": "0.1.0",
+  "description": "Minimal Vulkan demo for TesseractVR.",
+  "dependencies": [
+    "glfw3"
+  ]
+}
