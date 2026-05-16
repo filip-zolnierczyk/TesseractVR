@@ -221,7 +221,7 @@ Uruchom aplikację:
 
 **Powinno się otworzyć okno 800x600 z animowanym 4D hipersześcianem!**
 
-Aby zamknąć aplikację, naciśnij `Esc` lub zamknij okno.
+Aby zamknąć aplikację, zamknij okno.
 
 ---
 
