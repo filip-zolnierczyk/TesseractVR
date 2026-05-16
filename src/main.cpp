@@ -652,11 +652,11 @@ private:
         vkResetFences(device, 1, &inFlightFence);
 
         uint32_t imageIndex;
-        VkResult acquireResult = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-        if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR) {
+        VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+            recreateSwapChain();
             return;
-        }
-        if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
+        } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
             throw std::runtime_error("failed to acquire swap chain image!");
         }
 
@@ -697,9 +697,8 @@ private:
 
         VkResult presentResult = vkQueuePresentKHR(presentQueue, &presentInfo);
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
-            return;
-        }
-        if (presentResult != VK_SUCCESS) {
+            recreateSwapChain();
+        } else if (presentResult != VK_SUCCESS) {
             throw std::runtime_error("failed to present swap chain image!");
         }
     }
