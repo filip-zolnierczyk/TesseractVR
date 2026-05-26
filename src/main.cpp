@@ -13,6 +13,20 @@
 #include <optional>
 #include <set>
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+struct UniformBufferObject {
+    alignas(16) glm::mat4 view;         
+    alignas(16) glm::mat4 proj;         
+    alignas(8)  glm::vec2 resolution;   
+    alignas(4)  float time;             
+    alignas(4)  float w_offset;         
+};
+
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
@@ -79,7 +93,7 @@ private:
 
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device;
-
+    VkDescriptorSetLayout descriptorSetLayout;
     VkQueue graphicsQueue;
     VkQueue presentQueue;
 
@@ -116,6 +130,7 @@ private:
         createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
+        createDescriptorSetLayout();
         createSwapChain();
         createImageViews();
         createRenderPass();
@@ -134,8 +149,26 @@ private:
 
         vkDeviceWaitIdle(device);
     }
+    void createDescriptorSetLayout() {
+        VkDescriptorSetLayoutBinding uboLayoutBinding{};
+        uboLayoutBinding.binding = 0;
+        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboLayoutBinding.descriptorCount = 1;
+        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        uboLayoutBinding.pImmutableSamplers = nullptr;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &uboLayoutBinding;
+
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor set layout!");
+        }
+    }
 
     void cleanup() {
+        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
         vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
         vkDestroyFence(device, inFlightFence, nullptr);
