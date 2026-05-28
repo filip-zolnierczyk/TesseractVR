@@ -43,7 +43,7 @@ echo [3/3] Kompilacja...
 cmake --build . --config Release
 cd ..
 
-if exist "bin\vrtest.exe" (
+if exist "bin\Relese\vrtest.exe" (
     echo.
     echo === Sukces! ===
     echo Uruchom: bin\vrtest.exe
