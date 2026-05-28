@@ -750,8 +750,7 @@ private:
         VkPipelineRasterizationStateCreateInfo rsCI{
             VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
         rsCI.polygonMode=VK_POLYGON_MODE_FILL;
-        rsCI.cullMode=(topo==VK_PRIMITIVE_TOPOLOGY_LINE_LIST)
-                     ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+        rsCI.cullMode = VK_CULL_MODE_NONE;
         rsCI.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rsCI.lineWidth=lineWidth;
 
@@ -883,7 +882,7 @@ private:
         // ── Podłoga (siatka) ─────────────────────────────────────────────────
         {
             SceneObject obj;
-            auto verts = makeGrid(10, 0.0f); // 10m w każdą stronę, y=0
+            auto verts = makeGrid(10, -1.6f); // 10m w każdą stronę, y=0
             obj.vbo        = createVertexBuffer(verts);
             obj.vertCount  = (uint32_t)verts.size();
             obj.modelMatrix= Mat4::identity();
