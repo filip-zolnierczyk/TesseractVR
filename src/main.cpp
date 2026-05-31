@@ -5,6 +5,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <algorithm>
+#include <filesystem>
 #include <vector>
 #include <cstring>
 #include <cstdlib>
@@ -12,6 +13,10 @@
 #include <limits>
 #include <optional>
 #include <set>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -175,19 +180,11 @@ private:
 
         vkDestroyCommandPool(device, commandPool, nullptr);
 
-        for (auto framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
-        }
+        cleanupSwapChain();
 
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
-
-        for (auto imageView : swapChainImageViews) {
-            vkDestroyImageView(device, imageView, nullptr);
-        }
-
-        vkDestroySwapchainKHR(device, swapChain, nullptr);
         vkDestroyDevice(device, nullptr);
 
         if (enableValidationLayers) {
@@ -386,6 +383,30 @@ private:
         swapChainExtent = extent;
     }
 
+    void cleanupSwapChain() {
+        for (auto framebuffer : swapChainFramebuffers) {
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+
+        for (auto imageView : swapChainImageViews) {
+            vkDestroyImageView(device, imageView, nullptr);
+        }
+
+        vkDestroySwapchainKHR(device, swapChain, nullptr);
+    }
+
+    void recreateSwapChain() {
+        vkDeviceWaitIdle(device);
+
+        cleanupSwapChain();
+
+        createSwapChain();
+        createImageViews();
+        createRenderPass();
+        createGraphicsPipeline();
+        createFramebuffers();
+    }
+
     void createImageViews() {
         swapChainImageViews.resize(swapChainImages.size());
 
@@ -535,10 +556,11 @@ private:
 
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 0;
-        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.setLayoutCount = 1;                      // ZMIANA: Zgłaszamy 1 layout
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;      // ZMIANA: Podpinamy nasz Descriptor Set Layout
+        pipelineLayoutInfo.pushConstantRangeCount = 1;              // Zostawiamy Push Constants (na razie)
         pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-
+        
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
@@ -915,7 +937,18 @@ private:
     }
 
     static std::vector<char> readFile(const std::string& filename) {
-        std::ifstream file(filename, std::ios::ate | std::ios::binary);
+        std::filesystem::path resolvedPath = filename;
+
+#ifdef _WIN32
+        std::vector<char> executablePath(MAX_PATH);
+        DWORD length = GetModuleFileNameA(nullptr, executablePath.data(), static_cast<DWORD>(executablePath.size()));
+        if (length != 0) {
+            std::filesystem::path executableDirectory = std::filesystem::path(executablePath.data(), executablePath.data() + length).parent_path();
+            resolvedPath = executableDirectory / filename;
+        }
+#endif
+
+        std::ifstream file(resolvedPath, std::ios::ate | std::ios::binary);
 
         if (!file.is_open()) {
             throw std::runtime_error("failed to open file!");
