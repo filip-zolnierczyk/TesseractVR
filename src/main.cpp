@@ -780,7 +780,7 @@ private:
         
         // 2. Kopiowanie danych bezpośrednio do pamięci GPU przez zmapowany wskaźnik VMA
         memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
-
+        vmaFlushAllocation(allocator, uniformBufferAllocation, 0, sizeof(ubo));
         // 3. Bindowanie wtyczki z danymi (Descriptor Set) do potoku pod index 0
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
