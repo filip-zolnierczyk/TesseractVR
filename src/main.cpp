@@ -110,7 +110,8 @@ private:
     VkDescriptorPool descriptorPool;
     VkDescriptorSet descriptorSet;
 
-    
+    float currentWOffset = 0.0f;
+
     VkQueue graphicsQueue;
     VkQueue presentQueue;
 
@@ -154,6 +155,9 @@ private:
         createRenderPass();
         createGraphicsPipeline();
         createFramebuffers();
+        createUniformBuffer();
+        createDescriptorPool();
+        createDescriptorSets();
         createCommandPool();
         createCommandBuffer();
         createSyncObjects();
@@ -170,9 +174,25 @@ private:
         }
     }
 
+    void processInput() {
+        // Opcjonalnie: wyjście pod ESC
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+            glfwSetWindowShouldClose(window, true);
+        }
+
+        float speed = 0.005f; // Czułość przesunięcia cięcia 4D
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+            currentWOffset += speed;
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+            currentWOffset -= speed;
+        }
+    }
+
     void mainLoop() {
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
+            processInput();
             drawFrame();
         }
 
@@ -201,7 +221,8 @@ private:
         vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
         vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
         vkDestroyFence(device, inFlightFence, nullptr);
-
+        vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+        vmaDestroyBuffer(allocator, uniformBuffer, uniformBufferAllocation);
         vkDestroyCommandPool(device, commandPool, nullptr);
 
         cleanupSwapChain();
@@ -636,6 +657,71 @@ private:
         }
     }
 
+    void createUniformBuffer() {
+        VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = bufferSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                          VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        VmaAllocationInfo allocationInfo;
+        if (vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &uniformBuffer, &uniformBufferAllocation, &allocationInfo) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create uniform buffer!");
+        }
+        uniformBufferMapped = allocationInfo.pMappedData; // Tutaj VMA daje nam poprawny wskaźnik
+    }
+
+    void createDescriptorPool() {
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSize.descriptorCount = 1;
+
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.maxSets = 1;
+
+        if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor pool!");
+        }
+    }
+
+    void createDescriptorSets() {
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &descriptorSetLayout;
+
+        if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets!");
+        }
+
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = uniformBuffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSet;
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    }
+
     void createCommandPool() {
         QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
@@ -690,8 +776,8 @@ private:
         ubo.proj = glm::mat4(1.0f); // Macierz jednostkowa
         ubo.resolution = glm::vec2(swapChainExtent.width, swapChainExtent.height);
         ubo.time = static_cast<float>(glfwGetTime());
-        ubo.w_offset = 0.0f;        // Zostawiamy 0.0, to posłuży do sterowania klawiaturą
-
+        ubo.w_offset = currentWOffset;
+        
         // 2. Kopiowanie danych bezpośrednio do pamięci GPU przez zmapowany wskaźnik VMA
         memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
 

@@ -49,7 +49,7 @@ float sdBox4(vec4 p, vec4 b) {
 // applies 4D rotations, returns distance to 4D box sliced at that w
 float mapScene(vec3 p3) {
     // choose slice coordinate w (we keep it constant here; can be animated or controlled)
-    float wSlice = 0.0; // change to e.g. 0.2 to move slice
+    float wSlice = ubo.w_offset;
     vec4 p = vec4(p3, wSlice);
 
     // build rotation angles from time (animated)
