@@ -443,7 +443,11 @@ private:
     void recreateSwapChain() {
         vkDeviceWaitIdle(device);
 
+        vkDestroyPipeline(device, graphicsPipeline, nullptr);
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+
         cleanupSwapChain();
+        vkDestroyRenderPass(device, renderPass, nullptr);
 
         createSwapChain();
         createImageViews();
