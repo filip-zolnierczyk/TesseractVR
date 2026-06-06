@@ -217,7 +217,6 @@ private:
     }
 
     void cleanup() {
-        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
         vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
         vkDestroyFence(device, inFlightFence, nullptr);
@@ -229,6 +228,7 @@ private:
         vmaDestroyAllocator(allocator);
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
         vkDestroyDevice(device, nullptr);
 
