@@ -11,6 +11,7 @@
 
 #include <vector>
 #include <optional>
+#include <string>
 
 // --- Struktury wyciągnięte z main.cpp ---
 struct UniformBufferObject {
@@ -88,7 +89,7 @@ private:
     VkSemaphore renderFinishedSemaphore;
     VkFence inFlightFence;
 
-    // --- DEKLARACJE METOD PRYWATNYCH (do przeniesienia z main.cpp) ---
+    // --- DEKLARACJE METOD PRYWATNYCH ---
     void initVulkan();
     void initVMA();
     void createInstance();
