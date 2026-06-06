@@ -1,5 +1,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 
 #include <iostream>
 #include <fstream>
@@ -98,7 +100,17 @@ private:
 
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device;
+    VmaAllocator allocator;
     VkDescriptorSetLayout descriptorSetLayout;
+
+    VkBuffer uniformBuffer;
+    VmaAllocation uniformBufferAllocation;
+    void* uniformBufferMapped;
+
+    VkDescriptorPool descriptorPool;
+    VkDescriptorSet descriptorSet;
+
+    
     VkQueue graphicsQueue;
     VkQueue presentQueue;
 
@@ -135,6 +147,7 @@ private:
         createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
+        initVMA();
         createDescriptorSetLayout();
         createSwapChain();
         createImageViews();
@@ -144,6 +157,17 @@ private:
         createCommandPool();
         createCommandBuffer();
         createSyncObjects();
+    }
+
+    void initVMA() {
+        VmaAllocatorCreateInfo allocatorInfo{};
+        allocatorInfo.physicalDevice = physicalDevice;
+        allocatorInfo.device = device;
+        allocatorInfo.instance = instance;
+
+        if (vmaCreateAllocator(&allocatorInfo, &allocator) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create VMA allocator!");
+        }
     }
 
     void mainLoop() {
@@ -181,7 +205,7 @@ private:
         vkDestroyCommandPool(device, commandPool, nullptr);
 
         cleanupSwapChain();
-
+        vmaDestroyAllocator(allocator);
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
@@ -558,7 +582,7 @@ private:
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;                      // ZMIANA: Zgłaszamy 1 layout
         pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;      // ZMIANA: Podpinamy nasz Descriptor Set Layout
-        pipelineLayoutInfo.pushConstantRangeCount = 1;              // Zostawiamy Push Constants (na razie)
+        pipelineLayoutInfo.pushConstantRangeCount = 0;              // Zostawiamy Push Constants (na razie)
         pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
         
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
@@ -659,9 +683,20 @@ private:
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-        
-        float t = static_cast<float>(glfwGetTime());
-        vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &t);
+
+        // 1. Zbudowanie paczki danych na CPU
+        UniformBufferObject ubo{};
+        ubo.view = glm::mat4(1.0f); // Macierz jednostkowa (póki nie ma OpenXR)
+        ubo.proj = glm::mat4(1.0f); // Macierz jednostkowa
+        ubo.resolution = glm::vec2(swapChainExtent.width, swapChainExtent.height);
+        ubo.time = static_cast<float>(glfwGetTime());
+        ubo.w_offset = 0.0f;        // Zostawiamy 0.0, to posłuży do sterowania klawiaturą
+
+        // 2. Kopiowanie danych bezpośrednio do pamięci GPU przez zmapowany wskaźnik VMA
+        memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
+
+        // 3. Bindowanie wtyczki z danymi (Descriptor Set) do potoku pod index 0
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
         VkViewport viewport{};
         viewport.x = 0.0f;

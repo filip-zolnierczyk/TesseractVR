@@ -3,8 +3,13 @@
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 outColor;
 
-layout(push_constant) uniform Push { float time; } pc;
-
+layout(binding = 0) uniform UniformBufferObject {
+    mat4 view;
+    mat4 proj;
+    vec2 resolution;
+    float time;
+    float w_offset;
+} ubo;
 // 4D plane rotations implemented as inplace transforms on vec4
 vec4 rotXY(vec4 p, float a) {
     float c = cos(a), s = sin(a);
@@ -48,7 +53,7 @@ float mapScene(vec3 p3) {
     vec4 p = vec4(p3, wSlice);
 
     // build rotation angles from time (animated)
-    float t = pc.time;
+    float t = ubo.time;
     float aXY = t * 0.6;
     float aXZ = t * 0.35;
     float aXW = t * 0.45;
