@@ -1,10 +1,13 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
 #include <algorithm>
+#include <filesystem>
 #include <vector>
 #include <cstring>
 #include <cstdlib>
@@ -12,6 +15,10 @@
 #include <limits>
 #include <optional>
 #include <set>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -93,7 +100,18 @@ private:
 
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device;
+    VmaAllocator allocator;
     VkDescriptorSetLayout descriptorSetLayout;
+
+    VkBuffer uniformBuffer;
+    VmaAllocation uniformBufferAllocation;
+    void* uniformBufferMapped;
+
+    VkDescriptorPool descriptorPool;
+    VkDescriptorSet descriptorSet;
+
+    float currentWOffset = 0.0f;
+
     VkQueue graphicsQueue;
     VkQueue presentQueue;
 
@@ -130,20 +148,51 @@ private:
         createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
+        initVMA();
         createDescriptorSetLayout();
         createSwapChain();
         createImageViews();
         createRenderPass();
         createGraphicsPipeline();
         createFramebuffers();
+        createUniformBuffer();
+        createDescriptorPool();
+        createDescriptorSets();
         createCommandPool();
         createCommandBuffer();
         createSyncObjects();
     }
 
+    void initVMA() {
+        VmaAllocatorCreateInfo allocatorInfo{};
+        allocatorInfo.physicalDevice = physicalDevice;
+        allocatorInfo.device = device;
+        allocatorInfo.instance = instance;
+
+        if (vmaCreateAllocator(&allocatorInfo, &allocator) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create VMA allocator!");
+        }
+    }
+
+    void processInput() {
+        // Opcjonalnie: wyjście pod ESC
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+            glfwSetWindowShouldClose(window, true);
+        }
+
+        float speed = 0.005f; // Czułość przesunięcia cięcia 4D
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+            currentWOffset += speed;
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+            currentWOffset -= speed;
+        }
+    }
+
     void mainLoop() {
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
+            processInput();
             drawFrame();
         }
 
@@ -168,26 +217,19 @@ private:
     }
 
     void cleanup() {
-        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
         vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
         vkDestroyFence(device, inFlightFence, nullptr);
-
+        vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+        vmaDestroyBuffer(allocator, uniformBuffer, uniformBufferAllocation);
         vkDestroyCommandPool(device, commandPool, nullptr);
 
-        for (auto framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
-        }
-
+        cleanupSwapChain();
+        vmaDestroyAllocator(allocator);
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
-
-        for (auto imageView : swapChainImageViews) {
-            vkDestroyImageView(device, imageView, nullptr);
-        }
-
-        vkDestroySwapchainKHR(device, swapChain, nullptr);
         vkDestroyDevice(device, nullptr);
 
         if (enableValidationLayers) {
@@ -386,6 +428,34 @@ private:
         swapChainExtent = extent;
     }
 
+    void cleanupSwapChain() {
+        for (auto framebuffer : swapChainFramebuffers) {
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+
+        for (auto imageView : swapChainImageViews) {
+            vkDestroyImageView(device, imageView, nullptr);
+        }
+
+        vkDestroySwapchainKHR(device, swapChain, nullptr);
+    }
+
+    void recreateSwapChain() {
+        vkDeviceWaitIdle(device);
+
+        vkDestroyPipeline(device, graphicsPipeline, nullptr);
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+
+        cleanupSwapChain();
+        vkDestroyRenderPass(device, renderPass, nullptr);
+
+        createSwapChain();
+        createImageViews();
+        createRenderPass();
+        createGraphicsPipeline();
+        createFramebuffers();
+    }
+
     void createImageViews() {
         swapChainImageViews.resize(swapChainImages.size());
 
@@ -528,17 +598,13 @@ private:
         dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
         dynamicState.pDynamicStates = dynamicStates.data();
 
-        VkPushConstantRange pushConstantRange{};
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        pushConstantRange.offset = 0;
-        pushConstantRange.size = sizeof(float);
-
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 0;
-        pipelineLayoutInfo.pushConstantRangeCount = 1;
-        pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-
+        pipelineLayoutInfo.setLayoutCount = 1;                      // ZMIANA: Zgłaszamy 1 layout
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;      // ZMIANA: Podpinamy nasz Descriptor Set Layout
+        pipelineLayoutInfo.pushConstantRangeCount = 0;              // Zostawiamy Push Constants (na razie)
+        pipelineLayoutInfo.pPushConstantRanges = nullptr;
+        
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
@@ -590,6 +656,71 @@ private:
         }
     }
 
+    void createUniformBuffer() {
+        VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = bufferSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                          VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        VmaAllocationInfo allocationInfo;
+        if (vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &uniformBuffer, &uniformBufferAllocation, &allocationInfo) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create uniform buffer!");
+        }
+        uniformBufferMapped = allocationInfo.pMappedData; // Tutaj VMA daje nam poprawny wskaźnik
+    }
+
+    void createDescriptorPool() {
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSize.descriptorCount = 1;
+
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.maxSets = 1;
+
+        if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor pool!");
+        }
+    }
+
+    void createDescriptorSets() {
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &descriptorSetLayout;
+
+        if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets!");
+        }
+
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = uniformBuffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSet;
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    }
+
     void createCommandPool() {
         QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
@@ -637,9 +768,20 @@ private:
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+        // 1. Zbudowanie paczki danych na CPU
+        UniformBufferObject ubo{};
+        ubo.view = glm::mat4(1.0f); // Macierz jednostkowa (póki nie ma OpenXR)
+        ubo.proj = glm::mat4(1.0f); // Macierz jednostkowa
+        ubo.resolution = glm::vec2(swapChainExtent.width, swapChainExtent.height);
+        ubo.time = static_cast<float>(glfwGetTime());
+        ubo.w_offset = currentWOffset;
         
-        float t = static_cast<float>(glfwGetTime());
-        vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &t);
+        // 2. Kopiowanie danych bezpośrednio do pamięci GPU przez zmapowany wskaźnik VMA
+        memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
+        vmaFlushAllocation(allocator, uniformBufferAllocation, 0, sizeof(ubo));
+        // 3. Bindowanie wtyczki z danymi (Descriptor Set) do potoku pod index 0
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
         VkViewport viewport{};
         viewport.x = 0.0f;
@@ -915,7 +1057,18 @@ private:
     }
 
     static std::vector<char> readFile(const std::string& filename) {
-        std::ifstream file(filename, std::ios::ate | std::ios::binary);
+        std::filesystem::path resolvedPath = filename;
+
+#ifdef _WIN32
+        std::vector<char> executablePath(MAX_PATH);
+        DWORD length = GetModuleFileNameA(nullptr, executablePath.data(), static_cast<DWORD>(executablePath.size()));
+        if (length != 0) {
+            std::filesystem::path executableDirectory = std::filesystem::path(executablePath.data(), executablePath.data() + length).parent_path();
+            resolvedPath = executableDirectory / filename;
+        }
+#endif
+
+        std::ifstream file(resolvedPath, std::ios::ate | std::ios::binary);
 
         if (!file.is_open()) {
             throw std::runtime_error("failed to open file!");

@@ -3,8 +3,13 @@
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 outColor;
 
-layout(push_constant) uniform Push { float time; } pc;
-
+layout(binding = 0) uniform UniformBufferObject {
+    mat4 view;
+    mat4 proj;
+    vec2 resolution;
+    float time;
+    float w_offset;
+} ubo;
 // 4D plane rotations implemented as inplace transforms on vec4
 vec4 rotXY(vec4 p, float a) {
     float c = cos(a), s = sin(a);
@@ -44,11 +49,11 @@ float sdBox4(vec4 p, vec4 b) {
 // applies 4D rotations, returns distance to 4D box sliced at that w
 float mapScene(vec3 p3) {
     // choose slice coordinate w (we keep it constant here; can be animated or controlled)
-    float wSlice = 0.0; // change to e.g. 0.2 to move slice
+    float wSlice = ubo.w_offset;
     vec4 p = vec4(p3, wSlice);
 
     // build rotation angles from time (animated)
-    float t = pc.time;
+    float t = ubo.time;
     float aXY = t * 0.6;
     float aXZ = t * 0.35;
     float aXW = t * 0.45;
