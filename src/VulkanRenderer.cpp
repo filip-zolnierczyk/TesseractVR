@@ -383,6 +383,9 @@ void VulkanRenderer::recreateSwapChain() {
 
     cleanupSwapChain();
 
+    vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyRenderPass(device, renderPass, nullptr);
+
     createSwapChain();
     createImageViews();
     createRenderPass();
