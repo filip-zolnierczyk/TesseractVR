@@ -40,6 +40,12 @@ struct SwapChainSupportDetails {
 // --- Publiczny interfejs naszego silnika ---
 class VulkanRenderer {
 public:
+    VulkanRenderer() = default;
+    VulkanRenderer(const VulkanRenderer&) = delete;
+    VulkanRenderer& operator=(const VulkanRenderer&) = delete;
+    VulkanRenderer(VulkanRenderer&&) = delete;
+    VulkanRenderer& operator=(VulkanRenderer&&) = delete;
+
     void init(GLFWwindow* window);
     void drawFrame(float time, float wOffset);
     void cleanup();
