@@ -14,7 +14,7 @@ find_program(GLSLANG_VALIDATOR glslangValidator HINTS $ENV{VULKAN_SDK}/bin REQUI
 set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/${PROJECT_NAME})
 set(SHADERS_DIR ${OUTPUT_DIR}/shaders)
 
-add_executable(${PROJECT_NAME} src/main.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp src/Application.cpp src/VulkanRenderer.cpp)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR}
 )
