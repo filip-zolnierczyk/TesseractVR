@@ -7,7 +7,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <set>
-
+#include <cstring>
+#include <limits>
 #ifdef _WIN32
 #define NOMINMAX // DODANE: Blokada makra 'max' z windows.h, które psuje std::max w chooseSwapExtent
 #include <windows.h>
