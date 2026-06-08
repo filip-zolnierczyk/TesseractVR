@@ -47,11 +47,12 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 
 // --- PUBLICZNY INTERFEJS KLASY ---
 
-void VulkanRenderer::init(GLFWwindow* targetWindow) {
+void VulkanRenderer::init(GLFWwindow* targetWindow, const std::vector<const char*>& instanceExtensions, const std::vector<const char*>& deviceExtensions) {
     window = targetWindow;
+    injectedInstanceExtensions = instanceExtensions;
+    injectedDeviceExtensions = deviceExtensions;
     initVulkan();
 }
-
 void VulkanRenderer::cleanup() {
     vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
     vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
@@ -80,7 +81,7 @@ void VulkanRenderer::waitForIdle() {
     vkDeviceWaitIdle(device);
 }
 
-void VulkanRenderer::drawFrame(float time, float wOffset) {
+void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj) {
     vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
     vkResetFences(device, 1, &inFlightFence);
 
@@ -94,7 +95,7 @@ void VulkanRenderer::drawFrame(float time, float wOffset) {
     }
 
     vkResetCommandBuffer(commandBuffer, 0);
-    recordCommandBuffer(commandBuffer, imageIndex, time, wOffset);
+    recordCommandBuffer(commandBuffer, imageIndex, time, wOffset, view, proj);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -296,8 +297,12 @@ void VulkanRenderer::createLogicalDevice() {
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.pEnabledFeatures = &deviceFeatures;
 
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    // Łączymy bazowe rozszerzenia z tymi od OpenXR
+    std::vector<const char*> allDeviceExtensions = deviceExtensions;
+    allDeviceExtensions.insert(allDeviceExtensions.end(), injectedDeviceExtensions.begin(), injectedDeviceExtensions.end());
+
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(allDeviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = allDeviceExtensions.data();
 
     if (enableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
@@ -312,6 +317,8 @@ void VulkanRenderer::createLogicalDevice() {
 
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+    
+    graphicsQueueFamilyIndex = indices.graphicsFamily.value(); // DODANE: Zapis dla OpenXR
 }
 
 void VulkanRenderer::createSwapChain() {
@@ -683,7 +690,7 @@ void VulkanRenderer::createCommandBuffer() {
     }
 }
 
-void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset) {
+void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj) {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -707,8 +714,8 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
     UniformBufferObject ubo{};
-    ubo.view = glm::mat4(1.0f);
-    ubo.proj = glm::mat4(1.0f);
+    ubo.view = view;            // ZMIANA: Pobierane z argumentu (z Application)
+    ubo.proj = proj;            // ZMIANA: Pobierane z argumentu
     ubo.resolution = glm::vec2(swapChainExtent.width, swapChainExtent.height);
     ubo.time = time;            
     ubo.w_offset = wOffset;     
@@ -853,9 +860,10 @@ bool VulkanRenderer::checkDeviceExtensionSupport(VkPhysicalDevice device) {
 
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
-
+    
     std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
-
+    // Dodajemy do sprawdzenia również rozszerzenia OpenXR
+    requiredExtensions.insert(injectedDeviceExtensions.begin(), injectedDeviceExtensions.end());
     for (const auto& extension : availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
     }
@@ -905,6 +913,9 @@ std::vector<const char*> VulkanRenderer::getRequiredExtensions() {
     if (enableValidationLayers) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
+
+    // Dodajemy rozszerzenia narzucone przez OpenXR (jeśli są)
+    extensions.insert(extensions.end(), injectedInstanceExtensions.begin(), injectedInstanceExtensions.end());
 
     return extensions;
 }

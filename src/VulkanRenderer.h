@@ -40,19 +40,31 @@ struct SwapChainSupportDetails {
 // --- Publiczny interfejs naszego silnika ---
 class VulkanRenderer {
 public:
-    VulkanRenderer() = default;
-    VulkanRenderer(const VulkanRenderer&) = delete;
-    VulkanRenderer& operator=(const VulkanRenderer&) = delete;
-    VulkanRenderer(VulkanRenderer&&) = delete;
-    VulkanRenderer& operator=(VulkanRenderer&&) = delete;
-
-    void init(GLFWwindow* window);
-    void drawFrame(float time, float wOffset);
+    // API pozwala teraz na wstrzyknięcie rozszerzeń narzucanych przez OpenXR
+    void init(GLFWwindow* window, 
+              const std::vector<const char*>& instanceExtensions = {}, 
+              const std::vector<const char*>& deviceExtensions = {});
+              
+    // Silnik będzie od teraz rysował bazując na macierzach oczu z VR
+    void drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj);
+    
     void cleanup();
     void waitForIdle();
 
+    // --- GETTERY DLA MODUŁU OPENXR ---
+    VkInstance       getInstance() const { return instance; }
+    VkPhysicalDevice getPhysicalDevice() const { return physicalDevice; }
+    VkDevice         getDevice() const { return device; }
+    VkQueue          getGraphicsQueue() const { return graphicsQueue; }
+    uint32_t         getGraphicsQueueFamily() const { return graphicsQueueFamilyIndex; }
+
 private:
     GLFWwindow* window;
+    
+    // Zapamiętane rozszerzenia narzucone przez zewnątrz
+    std::vector<const char*> injectedInstanceExtensions;
+    std::vector<const char*> injectedDeviceExtensions;
+    uint32_t graphicsQueueFamilyIndex = 0;
 
     // --- UCHWYTY VULKANA ---
     VkInstance instance;
@@ -116,7 +128,7 @@ private:
     void createDescriptorSets();
     void createCommandPool();
     void createCommandBuffer();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset);
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj);
     void createSyncObjects();
 
     // --- METODY POMOCNICZE ---
