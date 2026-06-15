@@ -81,7 +81,8 @@ void VulkanRenderer::waitForIdle() {
     vkDeviceWaitIdle(device);
 }
 
-void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj) {
+void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj,
+                               float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
     vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
     vkResetFences(device, 1, &inFlightFence);
 
@@ -95,7 +96,7 @@ void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view,
     }
 
     vkResetCommandBuffer(commandBuffer, 0);
-    recordCommandBuffer(commandBuffer, imageIndex, time, wOffset, view, proj);
+    recordCommandBuffer(commandBuffer, imageIndex, time, wOffset, view, proj, aXY, aXZ, aXW, aYZ, aYW, aZW);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -690,7 +691,7 @@ void VulkanRenderer::createCommandBuffer() {
     }
 }
 
-void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj) {
+void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -718,7 +719,13 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     ubo.proj = proj;            // ZMIANA: Pobierane z argumentu
     ubo.resolution = glm::vec2(swapChainExtent.width, swapChainExtent.height);
     ubo.time = time;            
-    ubo.w_offset = wOffset;     
+    ubo.w_offset = wOffset;    
+    ubo.aXY = aXY;
+    ubo.aXZ = aXZ;
+    ubo.aXW = aXW;
+    ubo.aYZ = aYZ;
+    ubo.aYW = aYW;
+    ubo.aZW = aZW; 
     
     memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
     vmaFlushAllocation(allocator, uniformBufferAllocation, 0, sizeof(ubo));

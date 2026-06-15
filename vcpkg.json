@@ -4,6 +4,7 @@
   "description": "Minimal Vulkan demo for TesseractVR.",
   "dependencies": [
     "glfw3",
-    "vulkan-memory-allocator"
+    "vulkan-memory-allocator",
+    "glm"
   ]
 }

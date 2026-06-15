@@ -9,6 +9,12 @@ layout(binding = 0) uniform UniformBufferObject {
     vec2 resolution;
     float time;
     float w_offset;
+    float aXY;
+    float aXZ;
+    float aXW;
+    float aYZ;
+    float aYW;
+    float aZW;
 } ubo;
 // 4D plane rotations implemented as inplace transforms on vec4
 vec4 rotXY(vec4 p, float a) {
@@ -52,23 +58,13 @@ float mapScene(vec3 p3) {
     float wSlice = ubo.w_offset;
     vec4 p = vec4(p3, wSlice);
 
-    // build rotation angles from time (animated)
     float t = ubo.time;
-    float aXY = t * 0.6;
-    float aXZ = t * 0.35;
-    float aXW = t * 0.45;
-    float aYZ = t * 0.25;
-    float aYW = t * 0.5;
-    float aZW = t * 0.15;
-
-    // primary rotation: XW plane (single-angle rotation)
-    p = rotXW(p, aXW);
-    // optional extra rotations (uncomment to enable double/compound rotation)
-    //p = rotXY(p, aXY);
-    //p = rotXZ(p, aXZ);
-    //p = rotYZ(p, aYZ);
-    //p = rotYW(p, aYW);
-    //p = rotZW(p, aZW);
+    p = rotXY(p, ubo.aXY); // XY  + t * 0.6
+    p = rotXZ(p, ubo.aXZ); // XZ  + t * 0.35
+    p = rotXW(p, ubo.aXW + t * 0.45); // XW 
+    p = rotYZ(p, ubo.aYZ); // YZ  + t * 0.25
+    p = rotYW(p, ubo.aYW); // YW  + t * 0.5
+    p = rotZW(p, ubo.aZW); // ZW  + t * 0.15
 
     // hyperbox half-sizes in 4D
     vec4 halfSize = vec4(0.9, 0.6, 0.4, 0.3);
