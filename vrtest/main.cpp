@@ -376,6 +376,7 @@ public:
         callGraphicsReqs();
         initVulkan();
         createSession();
+        initActions();  
         createSwapchains();
         createRenderPass();
         createPipelines();    // dwa pipeline: solid + lines
@@ -394,6 +395,14 @@ private:
     XrSessionState   m_sessionState = XR_SESSION_STATE_UNKNOWN;
     bool             m_sessionRunning = false;
     bool             m_quit           = false;
+    // ── Kontrolery – przyciski A/B/X/Y ──────────────────────────────────────
+    XrActionSet m_actionSet = XR_NULL_HANDLE;
+    XrAction    m_btnA = XR_NULL_HANDLE;
+    XrAction    m_btnB = XR_NULL_HANDLE;
+    XrAction    m_btnX = XR_NULL_HANDLE;
+    XrAction    m_btnY = XR_NULL_HANDLE;
+    bool        m_prevA = false, m_prevB = false;
+    bool        m_prevX = false, m_prevY = false;
 
     std::vector<XrViewConfigurationView> m_viewConfigs;
     std::vector<XrView>                  m_views;
@@ -1020,6 +1029,81 @@ private:
         }
     }
 
+    void initActions() {
+        // Action set
+        XrActionSetCreateInfo asCI{XR_TYPE_ACTION_SET_CREATE_INFO};
+        strncpy(asCI.actionSetName,     "buttons",  XR_MAX_ACTION_SET_NAME_SIZE);
+        strncpy(asCI.localizedActionSetName, "Buttons", XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE);
+        XR_CHECK(xrCreateActionSet(m_instance, &asCI, &m_actionSet));
+
+        // Lambda pomocnicza
+        auto makeBtn = [&](const char* name, XrAction& action) {
+            XrActionCreateInfo aCI{XR_TYPE_ACTION_CREATE_INFO};
+            strncpy(aCI.actionName,          name, XR_MAX_ACTION_NAME_SIZE);
+            strncpy(aCI.localizedActionName, name, XR_MAX_LOCALIZED_ACTION_NAME_SIZE);
+            aCI.actionType = XR_ACTION_TYPE_BOOLEAN_INPUT;
+            XR_CHECK(xrCreateAction(m_actionSet, &aCI, &action));
+        };
+        makeBtn("btn_a", m_btnA);
+        makeBtn("btn_b", m_btnB);
+        makeBtn("btn_x", m_btnX);
+        makeBtn("btn_y", m_btnY);
+
+        // Bindingi dla Oculus Touch (Quest / Rift S)
+        const char* profile = "/interaction_profiles/oculus/touch_controller";
+        auto path = [&](const char* str) -> XrPath {
+            XrPath p; xrStringToPath(m_instance, str, &p); return p;
+        };
+
+        XrActionSuggestedBinding bindings[] = {
+            {m_btnA, path("/user/hand/right/input/a/click")},
+            {m_btnB, path("/user/hand/right/input/b/click")},
+            {m_btnX, path("/user/hand/left/input/x/click")},
+            {m_btnY, path("/user/hand/left/input/y/click")},
+        };
+        XrInteractionProfileSuggestedBinding suggested{
+            XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+        suggested.interactionProfile    = path(profile);
+        suggested.suggestedBindings     = bindings;
+        suggested.countSuggestedBindings = 4;
+        // Ignorujemy błąd – runtime może nie znać profilu (np. inny headset)
+        xrSuggestInteractionProfileBindings(m_instance, &suggested);
+
+        XrSessionActionSetsAttachInfo attachInfo{
+            XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+        attachInfo.actionSets      = &m_actionSet;
+        attachInfo.countActionSets = 1;
+        XR_CHECK(xrAttachSessionActionSets(m_session, &attachInfo));
+
+        std::cout << "[Input] Action set zainicjalizowany (A/B/X/Y).\n";
+    }
+
+    void syncActions(XrTime predictedTime) {
+        // Synchronizacja action setu
+        XrActiveActionSet active{m_actionSet, XR_NULL_PATH};
+        XrActionsSyncInfo syncInfo{XR_TYPE_ACTIONS_SYNC_INFO};
+        syncInfo.activeActionSets      = &active;
+        syncInfo.countActiveActionSets = 1;
+        if (XR_FAILED(xrSyncActions(m_session, &syncInfo))) return;
+
+        // Lambda: odczytaj stan i wypisz przy wciśnięciu (zbocze narastające)
+        auto checkBtn = [&](XrAction action, const char* name, bool& prev) {
+            XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
+            gi.action = action;
+            XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};
+            if (XR_FAILED(xrGetActionStateBoolean(m_session, &gi, &state))) return;
+            bool cur = (state.isActive && state.currentState);
+            if (cur && !prev)
+                std::cout << "[Input] Pressed button: " << name << "\n";
+            prev = cur;
+        };
+
+        checkBtn(m_btnA, "A", m_prevA);
+        checkBtn(m_btnB, "B", m_prevB);
+        checkBtn(m_btnX, "X", m_prevX);
+        checkBtn(m_btnY, "Y", m_prevY);
+    }
+
     void mainLoop() {
         std::cout << "[App] Petla glowna (Ctrl+C aby wyjsc)...\n";
         uint64_t frame=0;
@@ -1035,6 +1119,7 @@ private:
             XR_CHECK(xrWaitFrame(m_session,&fwi,&fs));
             XrFrameBeginInfo fbi{XR_TYPE_FRAME_BEGIN_INFO};
             XR_CHECK(xrBeginFrame(m_session,&fbi));
+            syncActions(fs.predictedDisplayTime);
 
             // Pobierz aktualne widoki z headsetu
             XrViewLocateInfo vli{XR_TYPE_VIEW_LOCATE_INFO};
@@ -1082,7 +1167,7 @@ private:
             fei.layers=fs.shouldRender?layers:nullptr;
             XR_CHECK(xrEndFrame(m_session,&fei));
 
-            if(frame%100==0) std::cout << "[App] Klatka " << frame << "\n";
+            //if(frame%100==0) std::cout << "[App] Klatka " << frame << "\n";
             frame++;
         }
     }
@@ -1114,6 +1199,7 @@ private:
 
         for(auto& sc:m_swapchains) if(sc.handle) xrDestroySwapchain(sc.handle);
         if(m_appSpace) xrDestroySpace(m_appSpace);
+        if (m_actionSet) xrDestroyActionSet(m_actionSet);
         if(m_session)  xrDestroySession(m_session);
         if(m_instance) xrDestroyInstance(m_instance);
 
