@@ -15,13 +15,30 @@ void Application::processInput() {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
     }
-    float speed = 0.005f;
+    float speed = 0.01f;
     if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
         currentWOffset += speed;
     }
     if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
         currentWOffset -= speed;
     }
+    bool isShiftPressed = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+                           glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+                           
+    float rotSpeed = isShiftPressed ? -speed : speed;
+
+    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS) angleXY += rotSpeed;
+    if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS) angleXZ += rotSpeed;
+    if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS) angleXW += rotSpeed;
+    if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) angleYZ += rotSpeed;
+    if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) angleYW += rotSpeed;
+    if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) angleZW += rotSpeed;
+
+    bool spaceIsPressed = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
+    if (spaceIsPressed && !spaceWasPressed) {
+        isPaused = !isPaused;
+    }
+    spaceWasPressed = spaceIsPressed;
 }
 
 void Application::mainLoop() {
@@ -31,7 +48,13 @@ void Application::mainLoop() {
         glfwPollEvents();
         processInput();
         
-        float time = static_cast<float>(glfwGetTime());
+        float currentFrameTime = static_cast<float>(glfwGetTime());
+        float deltaTime = currentFrameTime - lastFrameTime;
+        lastFrameTime = currentFrameTime;
+
+        if (!isPaused) {
+            shaderTime += deltaTime;
+        }
         
         glm::mat4 view = glm::mat4(1.0f);
         glm::mat4 proj = glm::mat4(1.0f);
@@ -48,8 +71,7 @@ void Application::mainLoop() {
         }
 
         // Silnik staje się całkowicie agnostyczny - rysuje to, co mu podasz
-        renderer.drawFrame(time, currentWOffset, view, proj);
-    }
+        renderer.drawFrame(shaderTime, currentWOffset, view, proj, angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);    }
     
     renderer.waitForIdle();
 }

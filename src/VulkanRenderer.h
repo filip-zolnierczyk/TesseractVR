@@ -19,7 +19,13 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;         
     alignas(8)  glm::vec2 resolution;   
     alignas(4)  float time;             
-    alignas(4)  float w_offset;         
+    alignas(4)  float w_offset;    
+    alignas(4)  float aXY;
+    alignas(4)  float aXZ;
+    alignas(4)  float aXW;
+    alignas(4)  float aYZ;
+    alignas(4)  float aYW;
+    alignas(4)  float aZW;     
 };
 
 struct QueueFamilyIndices {
@@ -46,8 +52,7 @@ public:
               const std::vector<const char*>& deviceExtensions = {});
               
     // Silnik będzie od teraz rysował bazując na macierzach oczu z VR
-    void drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj);
-    
+    void drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
     void cleanup();
     void waitForIdle();
 
@@ -128,7 +133,7 @@ private:
     void createDescriptorSets();
     void createCommandPool();
     void createCommandBuffer();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj);
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
     void createSyncObjects();
 
     // --- METODY POMOCNICZE ---

@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
 
 find_program(GLSLANG_VALIDATOR glslangValidator HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 
@@ -19,7 +20,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR}
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw GPUOpen::VulkanMemoryAllocator)
+target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw GPUOpen::VulkanMemoryAllocator glm::glm)
 
 add_custom_command(
     OUTPUT ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv
@@ -33,3 +34,11 @@ add_custom_command(
 
 add_custom_target(shaders DEPENDS ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv)
 add_dependencies(${PROJECT_NAME} shaders)
+
+
+# Automatyczne kopiowanie świeżych shaderów obok pliku .exe po kompilacji
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${SHADERS_DIR}
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders
+)
