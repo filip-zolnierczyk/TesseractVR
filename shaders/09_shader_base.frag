@@ -51,22 +51,25 @@ float sdBox4(vec4 p, vec4 b) {
     return outside + inside;
 }
 
-// mapScene: takes 3D point p (the ray sample), forms a 4D point (p.x,p.y,p.z,wSlice),
-// applies 4D rotations, returns distance to 4D box sliced at that w
-float mapScene(vec3 p3) {
-    // choose slice coordinate w (we keep it constant here; can be animated or controlled)
+// NOWA FUNKCJA: Wyciąga lokalny, obrócony punkt w 4D
+vec4 getLocalPoint(vec3 p3) {
     float wSlice = ubo.w_offset;
     vec4 p = vec4(p3, wSlice);
 
     float t = ubo.time;
-    p = rotXY(p, ubo.aXY); // XY  + t * 0.6
-    p = rotXZ(p, ubo.aXZ); // XZ  + t * 0.35
-    p = rotXW(p, ubo.aXW + t * 0.45); // XW 
-    p = rotYZ(p, ubo.aYZ); // YZ  + t * 0.25
-    p = rotYW(p, ubo.aYW); // YW  + t * 0.5
-    p = rotZW(p, ubo.aZW); // ZW  + t * 0.15
+    p = rotXY(p, ubo.aXY); 
+    p = rotXZ(p, ubo.aXZ); 
+    p = rotXW(p, ubo.aXW + t * 0.45); 
+    p = rotYZ(p, ubo.aYZ); 
+    p = rotYW(p, ubo.aYW); 
+    p = rotZW(p, ubo.aZW);
+    
+    return p;
+}
 
-    // hyperbox half-sizes in 4D
+// mapScene korzysta teraz z getLocalPoint
+float mapScene(vec3 p3) {
+    vec4 p = getLocalPoint(p3);
     vec4 halfSize = vec4(0.9, 0.6, 0.4, 0.3);
     return sdBox4(p, halfSize);
 }
@@ -108,19 +111,30 @@ void main() {
     float t = rayMarch(ro, rd);
     if (t > 0.0) {
         vec3 p = ro + rd * t;
-        vec3 n = getNormal(p);
+        vec3 n = getNormal(p); // Wektor normalny do oświetlenia (zostaje w World-Space)
 
-        // color by normal for shape cues
-        vec3 an = abs(n);
+        // Pobieramy "lokalny" kształt punktu, żeby sprawdzić na której ścianie 4D wylądowaliśmy
+        vec4 local_p = getLocalPoint(p);
+        vec4 halfSize = vec4(0.9, 0.6, 0.4, 0.3);
+        
+        // Normalizujemy punkt względem rozmiaru sześcianu
+        vec4 normalized_p = local_p / halfSize;
+        vec4 abs_p = abs(normalized_p);
+
         vec3 faceColor = vec3(0.7);
-        if (an.x > an.y && an.x > an.z) {
-            faceColor = (n.x > 0.0) ? vec3(1.0, 0.3, 0.3) : vec3(0.6, 0.2, 0.6);
-        } else if (an.y > an.x && an.y > an.z) {
-            faceColor = (n.y > 0.0) ? vec3(0.3, 1.0, 0.3) : vec3(0.2, 0.7, 0.7);
+
+        // Identyfikujemy ścianę (ta oś, która jest najbliżej 1.0 to nasza ściana)
+        if (abs_p.x > abs_p.y && abs_p.x > abs_p.z && abs_p.x > abs_p.w) {
+            faceColor = (local_p.x > 0.0) ? vec3(1.0, 0.3, 0.3) : vec3(0.6, 0.1, 0.1); // Osie X (Czerwone)
+        } else if (abs_p.y > abs_p.x && abs_p.y > abs_p.z && abs_p.y > abs_p.w) {
+            faceColor = (local_p.y > 0.0) ? vec3(0.3, 1.0, 0.3) : vec3(0.1, 0.6, 0.1); // Osie Y (Zielone)
+        } else if (abs_p.z > abs_p.x && abs_p.z > abs_p.y && abs_p.z > abs_p.w) {
+            faceColor = (local_p.z > 0.0) ? vec3(0.3, 0.5, 1.0) : vec3(0.1, 0.2, 0.7); // Osie Z (Niebieskie)
         } else {
-            faceColor = (n.z > 0.0) ? vec3(0.3, 0.5, 1.0) : vec3(1.0, 0.95, 0.2);
+            faceColor = (local_p.w > 0.0) ? vec3(1.0, 0.95, 0.2) : vec3(0.8, 0.5, 0.1); // Osie W 4-wymiaru (Żółte/Pomarańczowe)
         }
 
+        // Oświetlenie kierunkowe (działa poprawnie, bo n jest w world-space!)
         vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
         float diff = max(dot(n, lightDir), 0.0);
         vec3 col = faceColor * (0.25 + 0.75 * diff);

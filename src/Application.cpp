@@ -15,7 +15,7 @@ void Application::processInput() {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
     }
-    float speed = 0.005f;
+    float speed = 0.01f;
     if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
         currentWOffset += speed;
     }

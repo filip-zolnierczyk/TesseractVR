@@ -34,3 +34,11 @@ add_custom_command(
 
 add_custom_target(shaders DEPENDS ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv)
 add_dependencies(${PROJECT_NAME} shaders)
+
+
+# Automatyczne kopiowanie świeżych shaderów obok pliku .exe po kompilacji
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${SHADERS_DIR}
+    $<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders
+)
