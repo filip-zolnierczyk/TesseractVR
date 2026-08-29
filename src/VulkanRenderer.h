@@ -12,6 +12,7 @@
 #include <vector>
 #include <optional>
 #include <string>
+#include <functional>
 
 // --- Struktury wyciągnięte z main.cpp ---
 struct UniformBufferObject {
@@ -50,6 +51,10 @@ public:
     void init(GLFWwindow* window, 
               const std::vector<const char*>& instanceExtensions = {}, 
               const std::vector<const char*>& deviceExtensions = {});
+
+    // Pozwala OpenXR narzucić konkretne GPU (musi być ustawione przed init())
+    using PhysicalDeviceSelector = std::function<VkPhysicalDevice(VkInstance)>;
+    void setPhysicalDeviceSelector(PhysicalDeviceSelector selector) { physicalDeviceSelector = std::move(selector); }
               
     // Silnik będzie od teraz rysował bazując na macierzach oczu z VR
     void drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
@@ -63,6 +68,14 @@ public:
     VkQueue          getGraphicsQueue() const { return graphicsQueue; }
     uint32_t         getGraphicsQueueFamily() const { return graphicsQueueFamilyIndex; }
 
+    // --- RENDEROWANIE OCZU DLA OPENXR (osobny render pass/pipeline w formacie narzuconym przez runtime) ---
+    // imagesPerEye[eye] to lista obrazow VkImage nalezacych do XrSwapchain danego oka.
+    void initXrRenderTargets(VkFormat colorFormat, const std::vector<std::vector<VkImage>>& imagesPerEye);
+    void destroyXrRenderTargets();
+    void renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent, float time, float wOffset,
+                      const glm::mat4& view, const glm::mat4& proj,
+                      float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
+
 private:
     GLFWwindow* window;
     
@@ -70,6 +83,7 @@ private:
     std::vector<const char*> injectedInstanceExtensions;
     std::vector<const char*> injectedDeviceExtensions;
     uint32_t graphicsQueueFamilyIndex = 0;
+    PhysicalDeviceSelector physicalDeviceSelector; // narzucone GPU (np. przez OpenXR)
 
     // --- UCHWYTY VULKANA ---
     VkInstance instance;
@@ -111,6 +125,23 @@ private:
     VkSemaphore imageAvailableSemaphore;
     VkSemaphore renderFinishedSemaphore;
     VkFence inFlightFence;
+
+    // --- ZASOBY RENDEROWANIA OCZU DLA OPENXR ---
+    VkRenderPass xrRenderPass = VK_NULL_HANDLE;
+    VkPipeline xrGraphicsPipeline = VK_NULL_HANDLE;
+    VkFormat xrColorFormat = VK_FORMAT_UNDEFINED;
+    std::vector<std::vector<VkImageView>> xrImageViews;     // [oko][obraz]
+    std::vector<std::vector<VkFramebuffer>> xrFramebuffers; // [oko][obraz]
+    VkBuffer xrUniformBuffer = VK_NULL_HANDLE;
+    VmaAllocation xrUniformBufferAllocation = VK_NULL_HANDLE;
+    void* xrUniformBufferMapped = nullptr;
+    VkDescriptorPool xrDescriptorPool = VK_NULL_HANDLE;
+    VkDescriptorSet xrDescriptorSet = VK_NULL_HANDLE;
+    VkCommandBuffer xrCommandBuffer = VK_NULL_HANDLE;
+    VkFence xrFence = VK_NULL_HANDLE;
+
+    void createXrRenderPass();
+    void createXrGraphicsPipeline();
 
     // --- DEKLARACJE METOD PRYWATNYCH ---
     void initVulkan();

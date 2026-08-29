@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VulkanRenderer.h"
+#include "OpenXRManager.h"
 #include <GLFW/glfw3.h>
 
 class Application {
@@ -10,6 +11,10 @@ public:
 private:
     GLFWwindow* window;
     VulkanRenderer renderer;
+    OpenXRManager vr;
+    bool vrActive = false; // true, gdy sesja OpenXR zostala pomyslnie utworzona
+    std::vector<const char*> xrInstanceExtensions;
+    std::vector<const char*> xrDeviceExtensions;
     
     float currentWOffset = 0.0f; // Nasza zmienna dla 4 wymiaru
     
@@ -26,6 +31,7 @@ private:
     bool spaceWasPressed = false;
 
     void initWindow();
+    void initVR();
     void processInput();
     void mainLoop();
     void cleanup();

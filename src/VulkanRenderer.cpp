@@ -54,6 +54,8 @@ void VulkanRenderer::init(GLFWwindow* targetWindow, const std::vector<const char
     initVulkan();
 }
 void VulkanRenderer::cleanup() {
+    destroyXrRenderTargets();
+
     vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
     vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
     vkDestroyFence(device, inFlightFence, nullptr);
@@ -251,6 +253,15 @@ void VulkanRenderer::createSurface() {
 }
 
 void VulkanRenderer::pickPhysicalDevice() {
+    if (physicalDeviceSelector) {
+        // OpenXR narzuca konkretne GPU - runtime headsetu musi renderować na tym samym urządzeniu
+        physicalDevice = physicalDeviceSelector(instance);
+        if (physicalDevice == VK_NULL_HANDLE) {
+            throw std::runtime_error("OpenXR nie wskazal poprawnego fizycznego urzadzenia Vulkan!");
+        }
+        return;
+    }
+
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
@@ -985,4 +996,363 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanRenderer::debugCallback(VkDebugUtilsMessage
     std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 
     return VK_FALSE;
+}
+
+// --- RENDEROWANIE OCZU DLA OPENXR ---
+// Osobny render pass/pipeline, bo format swapchaina narzucony przez runtime VR
+// może różnić się od formatu okna desktopowego (mirror window).
+
+void VulkanRenderer::createXrRenderPass() {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = xrColorFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+
+    if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &xrRenderPass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create XR render pass!");
+    }
+}
+
+void VulkanRenderer::createXrGraphicsPipeline() {
+    auto vertShaderCode = readFile("shaders/vert.spv");
+    auto fragShaderCode = readFile("shaders/frag.spv");
+
+    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vertShaderModule;
+    vertShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.module = fragShaderModule;
+    fragShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+
+    std::vector<VkDynamicState> dynamicStates = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+    VkPipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamicState.pDynamicStates = dynamicStates.data();
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = pipelineLayout; // reużywamy layoutu desktopowego pipeline'u (identyczne UBO)
+    pipelineInfo.renderPass = xrRenderPass;
+    pipelineInfo.subpass = 0;
+
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &xrGraphicsPipeline) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create XR graphics pipeline!");
+    }
+
+    vkDestroyShaderModule(device, fragShaderModule, nullptr);
+    vkDestroyShaderModule(device, vertShaderModule, nullptr);
+}
+
+void VulkanRenderer::initXrRenderTargets(VkFormat colorFormat, const std::vector<std::vector<VkImage>>& imagesPerEye) {
+    xrColorFormat = colorFormat;
+
+    createXrRenderPass();
+    createXrGraphicsPipeline();
+
+    xrImageViews.resize(imagesPerEye.size());
+    xrFramebuffers.resize(imagesPerEye.size());
+
+    for (size_t eye = 0; eye < imagesPerEye.size(); eye++) {
+        const auto& images = imagesPerEye[eye];
+        xrImageViews[eye].resize(images.size());
+        xrFramebuffers[eye].assign(images.size(), VK_NULL_HANDLE); // tworzone leniwie w renderXrEye, gdy znamy extent
+
+        for (size_t i = 0; i < images.size(); i++) {
+            VkImageViewCreateInfo viewInfo{};
+            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            viewInfo.image = images[i];
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            viewInfo.format = colorFormat;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(device, &viewInfo, nullptr, &xrImageViews[eye][i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create XR image view!");
+            }
+        }
+    }
+
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = sizeof(UniformBufferObject);
+    bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VmaAllocationInfo allocationInfo;
+    if (vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &xrUniformBuffer, &xrUniformBufferAllocation, &allocationInfo) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create XR uniform buffer!");
+    }
+    xrUniformBufferMapped = allocationInfo.pMappedData;
+
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = 1;
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = 1;
+
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &xrDescriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create XR descriptor pool!");
+    }
+
+    VkDescriptorSetAllocateInfo dsAllocInfo{};
+    dsAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    dsAllocInfo.descriptorPool = xrDescriptorPool;
+    dsAllocInfo.descriptorSetCount = 1;
+    dsAllocInfo.pSetLayouts = &descriptorSetLayout;
+
+    if (vkAllocateDescriptorSets(device, &dsAllocInfo, &xrDescriptorSet) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate XR descriptor set!");
+    }
+
+    VkDescriptorBufferInfo descBufferInfo{};
+    descBufferInfo.buffer = xrUniformBuffer;
+    descBufferInfo.offset = 0;
+    descBufferInfo.range = sizeof(UniformBufferObject);
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet = xrDescriptorSet;
+    descriptorWrite.dstBinding = 0;
+    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pBufferInfo = &descBufferInfo;
+
+    vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+
+    VkCommandBufferAllocateInfo cbAllocInfo{};
+    cbAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbAllocInfo.commandPool = commandPool;
+    cbAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbAllocInfo.commandBufferCount = 1;
+
+    if (vkAllocateCommandBuffers(device, &cbAllocInfo, &xrCommandBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate XR command buffer!");
+    }
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    if (vkCreateFence(device, &fenceInfo, nullptr, &xrFence) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create XR fence!");
+    }
+}
+
+void VulkanRenderer::destroyXrRenderTargets() {
+    if (xrRenderPass == VK_NULL_HANDLE) return;
+
+    vkDeviceWaitIdle(device);
+
+    vkDestroyFence(device, xrFence, nullptr);
+    vkFreeCommandBuffers(device, commandPool, 1, &xrCommandBuffer);
+    vkDestroyDescriptorPool(device, xrDescriptorPool, nullptr);
+    vmaDestroyBuffer(allocator, xrUniformBuffer, xrUniformBufferAllocation);
+
+    for (auto& eyeFramebuffers : xrFramebuffers) {
+        for (auto framebuffer : eyeFramebuffers) {
+            if (framebuffer != VK_NULL_HANDLE) vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+    }
+    for (auto& eyeViews : xrImageViews) {
+        for (auto view : eyeViews) {
+            vkDestroyImageView(device, view, nullptr);
+        }
+    }
+    xrFramebuffers.clear();
+    xrImageViews.clear();
+
+    vkDestroyPipeline(device, xrGraphicsPipeline, nullptr);
+    vkDestroyRenderPass(device, xrRenderPass, nullptr);
+
+    xrRenderPass = VK_NULL_HANDLE;
+    xrGraphicsPipeline = VK_NULL_HANDLE;
+    xrFence = VK_NULL_HANDLE;
+    xrCommandBuffer = VK_NULL_HANDLE;
+    xrDescriptorPool = VK_NULL_HANDLE;
+    xrUniformBuffer = VK_NULL_HANDLE;
+}
+
+void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent, float time, float wOffset,
+                                  const glm::mat4& view, const glm::mat4& proj,
+                                  float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
+    if (xrFramebuffers[eyeIndex][imageIndex] == VK_NULL_HANDLE) {
+        VkImageView attachments[] = { xrImageViews[eyeIndex][imageIndex] };
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = xrRenderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = extent.width;
+        framebufferInfo.height = extent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &xrFramebuffers[eyeIndex][imageIndex]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create XR framebuffer!");
+        }
+    }
+
+    vkWaitForFences(device, 1, &xrFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(device, 1, &xrFence);
+    vkResetCommandBuffer(xrCommandBuffer, 0);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    if (vkBeginCommandBuffer(xrCommandBuffer, &beginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("failed to begin recording XR command buffer!");
+    }
+
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = xrRenderPass;
+    renderPassInfo.framebuffer = xrFramebuffers[eyeIndex][imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = extent;
+
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(xrCommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(xrCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, xrGraphicsPipeline);
+
+    UniformBufferObject ubo{};
+    ubo.view = view;
+    ubo.proj = proj;
+    ubo.resolution = glm::vec2(extent.width, extent.height);
+    ubo.time = time;
+    ubo.w_offset = wOffset;
+    ubo.aXY = aXY;
+    ubo.aXZ = aXZ;
+    ubo.aXW = aXW;
+    ubo.aYZ = aYZ;
+    ubo.aYW = aYW;
+    ubo.aZW = aZW;
+
+    memcpy(xrUniformBufferMapped, &ubo, sizeof(ubo));
+    vmaFlushAllocation(allocator, xrUniformBufferAllocation, 0, sizeof(ubo));
+
+    vkCmdBindDescriptorSets(xrCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &xrDescriptorSet, 0, nullptr);
+
+    VkViewport viewport{};
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(xrCommandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.extent = extent;
+    vkCmdSetScissor(xrCommandBuffer, 0, 1, &scissor);
+
+    vkCmdDraw(xrCommandBuffer, 3, 1, 0, 0);
+    vkCmdEndRenderPass(xrCommandBuffer);
+
+    if (vkEndCommandBuffer(xrCommandBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to record XR command buffer!");
+    }
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &xrCommandBuffer;
+
+    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, xrFence) != VK_SUCCESS) {
+        throw std::runtime_error("failed to submit XR command buffer!");
+    }
+
+    // OpenXR wymaga aby obraz byl w pelni wyrenderowany zanim zwolnimy go do runtime'u
+    vkWaitForFences(device, 1, &xrFence, VK_TRUE, UINT64_MAX);
 }

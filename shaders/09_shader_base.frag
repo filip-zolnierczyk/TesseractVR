@@ -83,12 +83,6 @@ vec3 getNormal(vec3 p) {
     return normalize(vec3(dx, dy, dz));
 }
 
-vec3 rayDirFromUV(vec2 uv, float fov) {
-    vec2 p = uv * 2.0 - 1.0;
-    float z = 1.0 / tan(radians(fov) * 0.5);
-    return normalize(vec3(p.x, p.y, -z));
-}
-
 float rayMarch(vec3 ro, vec3 rd) {
     float t = 0.0;
     const int MAX_STEPS = 200;
@@ -105,8 +99,14 @@ float rayMarch(vec3 ro, vec3 rd) {
 }
 
 void main() {
-    vec3 ro = vec3(0.0, 0.0, 4.0);
-    vec3 rd = rayDirFromUV(uv, 45.0);
+    // Kamera pochodzi teraz z ubo.view/ubo.proj - w VR to daje osobne oko + head tracking
+    mat4 invView = inverse(ubo.view);
+    mat4 invProj = inverse(ubo.proj);
+
+    vec3 ro = (invView * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    vec4 eyeDir4 = invProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+    vec3 eyeDir = eyeDir4.xyz / eyeDir4.w;
+    vec3 rd = normalize((invView * vec4(eyeDir, 0.0)).xyz);
 
     float t = rayMarch(ro, rd);
     if (t > 0.0) {

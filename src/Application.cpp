@@ -1,5 +1,6 @@
 #include "Application.h"
 #include <stdexcept>
+#include <iostream>
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -9,6 +10,22 @@ void Application::initWindow() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     window = glfwCreateWindow(WIDTH, HEIGHT, "TesseractVR", nullptr, nullptr);
+}
+
+void Application::initVR() {
+    try {
+        vr.initSystem();
+        xrInstanceExtensions = vr.getRequiredVulkanInstanceExtensions();
+        xrDeviceExtensions = vr.getRequiredVulkanDeviceExtensions();
+        // OpenXR narzuca konkretne GPU - renderer musi go uzyc zamiast wybierac wlasne
+        renderer.setPhysicalDeviceSelector([this](VkInstance instance) {
+            return vr.pickVulkanPhysicalDevice(instance);
+        });
+        vrActive = true;
+    } catch (const std::exception& e) {
+        std::cerr << "[VR] Headset/runtime niedostepny, startuje tryb desktop: " << e.what() << std::endl;
+        vrActive = false;
+    }
 }
 
 void Application::processInput() {
@@ -34,6 +51,15 @@ void Application::processInput() {
     if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) angleYW += rotSpeed;
     if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) angleZW += rotSpeed;
 
+    // Pad (Xbox-style): A/B/X/Y powielaja klawisze 3/4/5/6
+    GLFWgamepadstate padState;
+    if (glfwGetGamepadState(GLFW_JOYSTICK_1, &padState)) {
+        if (padState.buttons[GLFW_GAMEPAD_BUTTON_A]) angleXW += rotSpeed;
+        if (padState.buttons[GLFW_GAMEPAD_BUTTON_B]) angleYZ += rotSpeed;
+        if (padState.buttons[GLFW_GAMEPAD_BUTTON_X]) angleYW += rotSpeed;
+        if (padState.buttons[GLFW_GAMEPAD_BUTTON_Y]) angleZW += rotSpeed;
+    }
+
     bool spaceIsPressed = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
     if (spaceIsPressed && !spaceWasPressed) {
         isPaused = !isPaused;
@@ -42,9 +68,7 @@ void Application::processInput() {
 }
 
 void Application::mainLoop() {
-    bool enableVR = false; 
-
-    while (!glfwWindowShouldClose(window)) {
+    while (!glfwWindowShouldClose(window) && !(vrActive && vr.shouldQuit())) {
         glfwPollEvents();
         processInput();
         
@@ -55,36 +79,62 @@ void Application::mainLoop() {
         if (!isPaused) {
             shaderTime += deltaTime;
         }
-        
-        glm::mat4 view = glm::mat4(1.0f);
-        glm::mat4 proj = glm::mat4(1.0f);
 
-        if (!enableVR) {
+        if (vrActive) {
+            // TRYB OPENXR: macierze widoku/projekcji pochodza z head-trackingu headsetu (jedna klatka na oko)
+            vr.pollEvents();
+            vr.renderFrame([&](uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent,
+                                const glm::mat4& view, const glm::mat4& proj) {
+                renderer.renderXrEye(eyeIndex, imageIndex, extent, shaderTime, currentWOffset, view, proj,
+                                      angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);
+            });
+        } else {
             // KLASYCZNY TRYB DESKTOP (Fallback)
             // Stacjonarna kamera w przestrzeni 3D
-            view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            proj = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 10.0f);
+            glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 10.0f);
             proj[1][1] *= -1; // Specyfika Vulkana: odwrócona oś Y!
-        } else {
-            // TRYB OPENXR
-            // widokiem dla lewego/prawego oka
-        }
 
-        // Silnik staje się całkowicie agnostyczny - rysuje to, co mu podasz
-        renderer.drawFrame(shaderTime, currentWOffset, view, proj, angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);    }
+            renderer.drawFrame(shaderTime, currentWOffset, view, proj, angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);
+        }
+    }
     
     renderer.waitForIdle();
 }
 
 void Application::cleanup() {
-    renderer.cleanup(); // Najpierw niszczymy Vulkana
+    // Kolejnosc jest istotna: nasze VkImageView/VkFramebuffer wskazuja na obrazy
+    // nalezace do XrSwapchain, wiec musza zostac zniszczone zanim runtime VR je zwolni.
+    renderer.cleanup();
+    if (vrActive) {
+        vr.cleanup();
+    }
     glfwDestroyWindow(window); // Potem ubijamy okno
     glfwTerminate();
 }
 
 void Application::run() {
     initWindow();
-    renderer.init(window);
+    initVR();
+
+    renderer.init(window, xrInstanceExtensions, xrDeviceExtensions);
+
+    if (vrActive) {
+        try {
+            vr.createSession(renderer.getInstance(), renderer.getPhysicalDevice(),
+                              renderer.getDevice(), renderer.getGraphicsQueueFamily());
+
+            std::vector<std::vector<VkImage>> imagesPerEye(vr.getEyeCount());
+            for (uint32_t eye = 0; eye < vr.getEyeCount(); eye++) {
+                imagesPerEye[eye] = vr.getSwapchainImages(eye);
+            }
+            renderer.initXrRenderTargets(vr.getSwapchainFormat(), imagesPerEye);
+        } catch (const std::exception& e) {
+            std::cerr << "[VR] Nie udalo sie uruchomic sesji VR, przelaczam na tryb desktop: " << e.what() << std::endl;
+            vrActive = false;
+        }
+    }
+
     mainLoop();
     cleanup();
 }
