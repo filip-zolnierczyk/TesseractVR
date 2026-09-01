@@ -73,9 +73,10 @@ void Application::mainLoop() {
         processInput();
         
         float currentFrameTime = static_cast<float>(glfwGetTime());
+        currentFrameTime = 0.0f;
         float deltaTime = currentFrameTime - lastFrameTime;
         lastFrameTime = currentFrameTime;
-
+        bool isPaused = true;
         if (!isPaused) {
             shaderTime += deltaTime;
         }

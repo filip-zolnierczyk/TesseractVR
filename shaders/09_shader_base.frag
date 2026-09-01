@@ -9,6 +9,7 @@ layout(binding = 0) uniform UniformBufferObject {
     vec2 resolution;
     float time;
     float w_offset;
+    float nearPlane;
     float aXY;
     float aXZ;
     float aXW;
@@ -51,10 +52,17 @@ float sdBox4(vec4 p, vec4 b) {
     return outside + inside;
 }
 
+// Stała pozycja tesseraktu w przestrzeni 3D
+const vec3 TESSERACT_POS = vec3(0.0, 0.0, 0.0);
+
 // NOWA FUNKCJA: Wyciąga lokalny, obrócony punkt w 4D
 vec4 getLocalPoint(vec3 p3) {
+    // Przesunięcie punktu ray-marching do lokalnego CS tesseraktu
+    // Dzięki temu tesserakt pozostaje nieruchomy w przestrzeni, niezależnie od pozycji kamery
+    vec3 p_local = p3 - TESSERACT_POS;
+    
     float wSlice = ubo.w_offset;
-    vec4 p = vec4(p3, wSlice);
+    vec4 p = vec4(p_local, wSlice);
 
     float t = ubo.time;
     p = rotXY(p, ubo.aXY); 
@@ -70,7 +78,8 @@ vec4 getLocalPoint(vec3 p3) {
 // mapScene korzysta teraz z getLocalPoint
 float mapScene(vec3 p3) {
     vec4 p = getLocalPoint(p3);
-    vec4 halfSize = vec4(0.9, 0.6, 0.4, 0.3);
+    // Zmniejszone o połowę do łatwiejszego debugowania
+    vec4 halfSize = vec4(0.45, 0.3, 0.2, 0.15);
     return sdBox4(p, halfSize);
 }
 
@@ -99,42 +108,35 @@ float rayMarch(vec3 ro, vec3 rd) {
 }
 
 void main() {
-    // Kamera pochodzi teraz z ubo.view/ubo.proj - w VR to daje osobne oko + head tracking
+    // Rotacja kamery
     mat4 invView = inverse(ubo.view);
-    mat4 invProj = inverse(ubo.proj);
+    
+    // Ray origin: zawsze w tym samym punkcie dla obu oczu (center point, nie IPD-shifted)
+    // Ignorujemy translacyjny offset z IPD - pracujemy tylko z rotacją
+    vec3 ro = vec3(0.0, 1.3, 3.0);  // Stała pozycja (jak w STAGE reference space)
 
-    vec3 ro = (invView * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    vec4 eyeDir4 = invProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
-    vec3 eyeDir = eyeDir4.xyz / eyeDir4.w;
-    vec3 rd = normalize((invView * vec4(eyeDir, 0.0)).xyz);
+    // Obliczenie wektora promienia z uwzględnieniem perspektywy i FOV gogli
+    mat4 invProj = inverse(ubo.proj);
+    vec4 target = invProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+    vec3 rayDirLocal = normalize(target.xyz / target.w);
+    vec3 rd = normalize((invView * vec4(rayDirLocal, 0.0)).xyz);
 
     float t = rayMarch(ro, rd);
+    
     if (t > 0.0) {
         vec3 p = ro + rd * t;
-        vec3 n = getNormal(p); // Wektor normalny do oświetlenia (zostaje w World-Space)
+        vec3 n = getNormal(p);
 
-        // Pobieramy "lokalny" kształt punktu, żeby sprawdzić na której ścianie 4D wylądowaliśmy
-        vec4 local_p = getLocalPoint(p);
-        vec4 halfSize = vec4(0.9, 0.6, 0.4, 0.3);
-        
-        // Normalizujemy punkt względem rozmiaru sześcianu
-        vec4 normalized_p = local_p / halfSize;
-        vec4 abs_p = abs(normalized_p);
-
+        vec3 an = abs(n);
         vec3 faceColor = vec3(0.7);
-
-        // Identyfikujemy ścianę (ta oś, która jest najbliżej 1.0 to nasza ściana)
-        if (abs_p.x > abs_p.y && abs_p.x > abs_p.z && abs_p.x > abs_p.w) {
-            faceColor = (local_p.x > 0.0) ? vec3(1.0, 0.3, 0.3) : vec3(0.6, 0.1, 0.1); // Osie X (Czerwone)
-        } else if (abs_p.y > abs_p.x && abs_p.y > abs_p.z && abs_p.y > abs_p.w) {
-            faceColor = (local_p.y > 0.0) ? vec3(0.3, 1.0, 0.3) : vec3(0.1, 0.6, 0.1); // Osie Y (Zielone)
-        } else if (abs_p.z > abs_p.x && abs_p.z > abs_p.y && abs_p.z > abs_p.w) {
-            faceColor = (local_p.z > 0.0) ? vec3(0.3, 0.5, 1.0) : vec3(0.1, 0.2, 0.7); // Osie Z (Niebieskie)
+        if (an.x > an.y && an.x > an.z) {
+            faceColor = (n.x > 0.0) ? vec3(1.0, 0.3, 0.3) : vec3(0.6, 0.2, 0.6);
+        } else if (an.y > an.x && an.y > an.z) {
+            faceColor = (n.y > 0.0) ? vec3(0.3, 1.0, 0.3) : vec3(0.2, 0.7, 0.7);
         } else {
-            faceColor = (local_p.w > 0.0) ? vec3(1.0, 0.95, 0.2) : vec3(0.8, 0.5, 0.1); // Osie W 4-wymiaru (Żółte/Pomarańczowe)
+            faceColor = (n.z > 0.0) ? vec3(0.3, 0.5, 1.0) : vec3(1.0, 0.95, 0.2);
         }
 
-        // Oświetlenie kierunkowe (działa poprawnie, bo n jest w world-space!)
         vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
         float diff = max(dot(n, lightDir), 0.0);
         vec3 col = faceColor * (0.25 + 0.75 * diff);

@@ -731,6 +731,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     ubo.resolution = glm::vec2(swapChainExtent.width, swapChainExtent.height);
     ubo.time = time;            
     ubo.w_offset = wOffset;    
+    ubo.nearPlane = 0.1f;  // near plane dla projekcji
     ubo.aXY = aXY;
     ubo.aXZ = aXZ;
     ubo.aXW = aXW;
@@ -1314,6 +1315,7 @@ void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExten
     ubo.resolution = glm::vec2(extent.width, extent.height);
     ubo.time = time;
     ubo.w_offset = wOffset;
+    ubo.nearPlane = 0.1f;  // near plane dla asymetrycznej projekcji
     ubo.aXY = aXY;
     ubo.aXZ = aXZ;
     ubo.aXW = aXW;

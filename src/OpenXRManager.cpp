@@ -262,7 +262,7 @@ void OpenXRManager::renderFrame(const EyeRenderFn& renderEye) {
             xrWaitSwapchainImage(sc.handle, &waitInfo);
 
             glm::mat4 view = poseToViewMatrix(views[i].pose);
-            glm::mat4 proj = fovToProjectionMatrix(views[i].fov, 0.05f, 100.0f);
+            glm::mat4 proj = fovToProjectionMatrix(views[i].fov, 0.1f, 100.0f);
             VkExtent2D extent = { static_cast<uint32_t>(sc.width), static_cast<uint32_t>(sc.height) };
 
             renderEye(static_cast<uint32_t>(i), imageIndex, extent, view, proj);
