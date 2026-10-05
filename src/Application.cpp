@@ -97,7 +97,8 @@ void Application::mainLoop() {
             proj[1][1] *= -1; // Specyfika Vulkana: odwrócona oś Y!
 
             renderer.drawFrame(shaderTime, currentWOffset, view, proj, angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);
-        }
+        }   
+        
     }
     
     renderer.waitForIdle();

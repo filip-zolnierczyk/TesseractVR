@@ -53,7 +53,7 @@ float sdBox4(vec4 p, vec4 b) {
 }
 
 // Stała pozycja tesseraktu w przestrzeni 3D
-const vec3 TESSERACT_POS = vec3(0.0, 0.0, 0.0);
+const vec3 TESSERACT_POS = vec3(0.0, 0.0, -4.0);
 
 // NOWA FUNKCJA: Wyciąga lokalny, obrócony punkt w 4D
 vec4 getLocalPoint(vec3 p3) {
@@ -78,8 +78,7 @@ vec4 getLocalPoint(vec3 p3) {
 // mapScene korzysta teraz z getLocalPoint
 float mapScene(vec3 p3) {
     vec4 p = getLocalPoint(p3);
-    // Zmniejszone o połowę do łatwiejszego debugowania
-    vec4 halfSize = vec4(0.45, 0.3, 0.2, 0.15);
+    vec4 halfSize = vec4(0.2, 0.2, 0.2, 0.2);
     return sdBox4(p, halfSize);
 }
 
@@ -108,12 +107,13 @@ float rayMarch(vec3 ro, vec3 rd) {
 }
 
 void main() {
-    // Rotacja kamery
+    // Obliczenie pozycji kamery w świecie na podstawie macierzy widoku OpenXR
     mat4 invView = inverse(ubo.view);
+    vec3 ro = vec3(invView[3]);
     
-    // Ray origin: zawsze w tym samym punkcie dla obu oczu (center point, nie IPD-shifted)
-    // Ignorujemy translacyjny offset z IPD - pracujemy tylko z rotacją
-    vec3 ro = vec3(0.0, 1.3, 3.0);  // Stała pozycja (jak w STAGE reference space)
+    // Zmniejsz IPD offset aby stereo efekt był mniej przesadny
+    // Pracuj z rotacją kamery normalnie
+    ro.x *= 0.5;  // Zmniejsz prawy/lewy offset o połowę
 
     // Obliczenie wektora promienia z uwzględnieniem perspektywy i FOV gogli
     mat4 invProj = inverse(ubo.proj);
