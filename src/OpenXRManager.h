@@ -18,7 +18,7 @@
 class OpenXRManager {
 public:
     ~OpenXRManager();
-
+    static bool isRuntimeAvailable();
     bool isSessionRunning() const { return sessionRunning; }
     bool shouldQuit() const { return quit; }
 

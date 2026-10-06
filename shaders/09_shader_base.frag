@@ -92,7 +92,7 @@ vec3 getNormal(vec3 p) {
     return normalize(vec3(dx, dy, dz));
 }
 
-float rayMarch(vec3 ro, vec3 rd) {
+float rayMarch1(vec3 ro, vec3 rd) {
     float t = 0.0;
     const int MAX_STEPS = 200;
     const float MAX_DIST = 80.0;
@@ -104,6 +104,60 @@ float rayMarch(vec3 ro, vec3 rd) {
         t += d;
         if (t > MAX_DIST) break;
     }
+    return -1.0;
+}
+
+float rayMarch(vec3 ro, vec3 rd) {
+    float t = 0.0;
+    const int MAX_STEPS = 200;
+    const float MAX_DIST = 80.0;
+    const float EPS = 1e-3;
+    const float MULT_START = 1.0;
+    const float MULT_GROWTH = 1.2;
+
+    float mult = MULT_START;
+
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        vec3 pos = ro + rd * t;
+        float d = mapScene(pos);
+
+        if (abs(d) < EPS) {
+            return t;
+        }
+
+        float prevT = t;
+        float stepDist = d * mult;
+        t += stepDist;
+
+        if (t > MAX_DIST) {
+            return -1.0;
+        }
+
+        if (d < 0.0) {
+            float a = prevT;
+            float b = t;
+
+            for (int j = 0; j < 8; ++j) {
+                float m = 0.5 * (a + b);
+                float dm = mapScene(ro + rd * m);
+
+                if (abs(dm) < EPS) {
+                    return m;
+                }
+
+                if (dm > 0.0) {
+                    a = m;
+                } else {
+                    b = m;
+                }
+            }
+
+            return 0.5 * (a + b);
+        }
+
+        mult *= MULT_GROWTH;
+    }
+
     return -1.0;
 }
 
