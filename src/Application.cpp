@@ -97,12 +97,6 @@ void Application::mainLoop() {
             glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 10.0f);
             proj[1][1] *= -1; // Specyfika Vulkana: odwrócona oś Y!
 
-            float centerSteps = approximateCenterRaySteps(view, proj, shaderTime, currentWOffset,
-                                              angleXY, angleXZ, angleXW,
-                                              angleYZ, angleYW, angleZW);
-
-            glfwSetWindowTitle(window, ("steps: " + std::to_string((int)centerSteps)).c_str());
-
             renderer.drawFrame(shaderTime, currentWOffset, view, proj, angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);
         }
     }
