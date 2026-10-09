@@ -69,17 +69,31 @@ void Application::processInput() {
 }
 
 void Application::mainLoop() {
+    static int frameCount = 0;
+    static double fpsTimer = 0.0;
+    double lastFrameTime = glfwGetTime();
+
     while (!glfwWindowShouldClose(window) && !(vrActive && vr.shouldQuit())) {
         glfwPollEvents();
         processInput();
-        
-        float currentFrameTime = static_cast<float>(glfwGetTime());
-        currentFrameTime = 0.0f;
-        float deltaTime = currentFrameTime - lastFrameTime;
-        lastFrameTime = currentFrameTime;
-        bool isPaused = true;
-        if (!isPaused) {
-            shaderTime += deltaTime;
+
+        double now = glfwGetTime();
+        double delta = now - lastFrameTime;
+        lastFrameTime = now;
+
+        frameCount++;
+        fpsTimer += delta;
+
+        if (fpsTimer >= 1.0) {
+            double fps = frameCount / fpsTimer;
+            std::string title = "TesseractVR - FPS: " + std::to_string((int)fps);
+            glfwSetWindowTitle(window, title.c_str());
+            frameCount = 0;
+            fpsTimer = 0.0;
+        }
+
+        if (isPaused) {
+            shaderTime += static_cast<float>(delta);
         }
 
         if (vrActive) {

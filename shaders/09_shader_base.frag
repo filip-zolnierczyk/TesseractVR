@@ -17,6 +17,7 @@ layout(binding = 0) uniform UniformBufferObject {
     float aYW;
     float aZW;
 } ubo;
+
 // 4D plane rotations implemented as inplace transforms on vec4
 vec4 rotXY(vec4 p, float a) {
     float c = cos(a), s = sin(a);
@@ -43,13 +44,51 @@ vec4 rotZW(vec4 p, float a) {
     return vec4(p.x, p.y, c*p.z - s*p.w, s*p.z + c*p.w);
 }
 
-// 4D box (hypercube) SDF: generalization of 3D box SDF to 4D
+// 4D box (hypercube) SDF
 float sdBox4(vec4 p, vec4 b) {
     vec4 d = abs(p) - b;
     vec4 mx = max(d, vec4(0.0));
     float outside = length(mx);
     float inside = min(max(max(d.x, d.y), max(d.z, d.w)), 0.0);
     return outside + inside;
+}
+
+// 4D sphere SDF
+float sdSphere4(vec4 p, float r) {
+    return length(p) - r;
+}
+
+// Exact 4D capsule: distance to a segment in 4D, minus radius
+float sdCapsule4(vec4 p, vec4 a, vec4 b, float r) {
+    vec4 pa = p - a;
+    vec4 ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h) - r;
+}
+
+// Rounded 4D box
+float sdRoundedBox4(vec4 p, vec4 b, float r) {
+    return sdBox4(p, b) - r;
+}
+
+// 4D ellipsoid-like shape
+float sdEllipsoid4(vec4 p, vec4 r) {
+    vec4 q = p / r;
+    float scale = min(min(r.x, r.y), min(r.z, r.w));
+    return (length(q) - 1.0) * scale;
+}
+
+// 4D "Clifford-torus-like" form:
+// two 2D circles coupled together in orthogonal planes
+float sdCliffordTorus4(vec4 p, vec2 majorRadii, float tubeR) {
+    float a = length(p.xy) - majorRadii.x;
+    float b = length(p.zw) - majorRadii.y;
+    return length(vec2(a, b)) - tubeR;
+}
+
+// Simple 4D cross-polytope
+float sdCrossPolytope4(vec4 p, float r) {
+    return (abs(p.x) + abs(p.y) + abs(p.z) + abs(p.w)) - r;
 }
 
 // Stała pozycja tesseraktu w przestrzeni 3D
@@ -75,12 +114,31 @@ vec4 getLocalPoint(vec3 p3) {
     return p;
 }
 
-// mapScene korzysta teraz z getLocalPoint
+int shapeId = 0; // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=torus-like, 6=cross-polytope
+
 float mapScene(vec3 p3) {
     vec4 p = getLocalPoint(p3);
-    // Zmniejszone o połowę do łatwiejszego debugowania
-    vec4 halfSize = vec4(0.45, 0.3, 0.2, 0.15);
-    return sdBox4(p, halfSize);
+
+    if (shapeId == 0) {
+        return sdBox4(p, vec4(0.45, 0.30, 0.20, 0.15));
+    } else if (shapeId == 1) {
+        return sdSphere4(p, 0.45);
+    } else if (shapeId == 2) {
+        return sdCapsule4(
+            p,
+            vec4(-0.35, 0.0, 0.0, 0.0),
+            vec4( 0.35, 0.0, 0.0, 0.0),
+            0.15
+        );
+    } else if (shapeId == 3) {
+        return sdRoundedBox4(p, vec4(0.35, 0.25, 0.18, 0.12), 0.06);
+    } else if (shapeId == 4) {
+        return sdEllipsoid4(p, vec4(0.50, 0.35, 0.25, 0.20));
+    } else if (shapeId == 5) {
+        return sdCliffordTorus4(p, vec2(0.35, 0.35), 0.10);
+    }else {
+        return sdCrossPolytope4(p, 0.75);
+    }
 }
 
 // numeric normal computed by differentiating the slice SDF w.r.t x,y,z (w fixed)
@@ -92,7 +150,7 @@ vec3 getNormal(vec3 p) {
     return normalize(vec3(dx, dy, dz));
 }
 
-float rayMarch1(vec3 ro, vec3 rd) {
+float rayMarch(vec3 ro, vec3 rd) {
     float t = 0.0;
     const int MAX_STEPS = 200;
     const float MAX_DIST = 80.0;
@@ -107,13 +165,13 @@ float rayMarch1(vec3 ro, vec3 rd) {
     return -1.0;
 }
 
-float rayMarch(vec3 ro, vec3 rd) {
+float rayMarch_fast(vec3 ro, vec3 rd) {
     float t = 0.0;
     const int MAX_STEPS = 200;
-    const float MAX_DIST = 80.0;
+    const float MAX_DIST = 50.0;
     const float EPS = 1e-3;
     const float MULT_START = 1.0;
-    const float MULT_GROWTH = 1.2;
+    const float MULT_GROWTH = 1.1;
 
     float mult = MULT_START;
 
@@ -155,7 +213,9 @@ float rayMarch(vec3 ro, vec3 rd) {
             return 0.5 * (a + b);
         }
 
-        mult *= MULT_GROWTH;
+        if (mult < 1.7){
+            mult *= MULT_GROWTH;
+        }
     }
 
     return -1.0;
