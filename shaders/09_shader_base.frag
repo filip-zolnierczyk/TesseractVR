@@ -110,10 +110,6 @@ void main() {
     // Obliczenie pozycji kamery w świecie na podstawie macierzy widoku OpenXR
     mat4 invView = inverse(ubo.view);
     vec3 ro = vec3(invView[3]);
-    
-    // Zmniejsz IPD offset aby stereo efekt był mniej przesadny
-    // Pracuj z rotacją kamery normalnie
-    ro.x *= 0.5;  // Zmniejsz prawy/lewy offset o połowę
 
     // Obliczenie wektora promienia z uwzględnieniem perspektywy i FOV gogli
     mat4 invProj = inverse(ubo.proj);
