@@ -305,9 +305,12 @@ void OpenXRManager::cleanup() {
 
 glm::mat4 OpenXRManager::poseToViewMatrix(const XrPosef& pose) {
     glm::quat q(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
-    glm::mat4 rot = glm::mat4_cast(q);
-    glm::mat4 cameraToWorld = glm::translate(glm::mat4(1.0f), glm::vec3(pose.position.x, pose.position.y, pose.position.z)) * rot;
-    return glm::inverse(cameraToWorld);
+    glm::vec3 pos(pose.position.x, pose.position.y, pose.position.z);
+    glm::mat4 translation = glm::translate(glm::mat4(1.0f), pos);
+    glm::mat4 rotation = glm::mat4_cast(q);
+    glm::mat4 cameraMatrix = translation * rotation;
+
+    return glm::inverse(cameraMatrix);
 }
 
 // Standardowa asymetryczna projekcja OpenXR (Vulkan: os Y w dol, glebokosc 0..1)
