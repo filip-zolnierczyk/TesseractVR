@@ -42,6 +42,15 @@ public:
 
     void pollEvents();
 
+    // Stan kontrolerow Touch: A/B (prawy), X/Y (lewy), lewy grip = odwrocenie kierunku, prawy drazek Y = os W
+    struct ControllerState {
+        bool a = false, b = false, x = false, y = false;
+        bool invert = false;
+        float wAxis = 0.0f;
+    };
+    void syncControllers();
+    const ControllerState& getControllerState() const { return controllers; }
+
     // Wywolywane raz na oko z gotowymi macierzami widoku/projekcji z headsetu.
     using EyeRenderFn = std::function<void(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent,
                                             const glm::mat4& view, const glm::mat4& proj)>;
@@ -74,6 +83,12 @@ private:
     std::vector<std::string> deviceExtStorage;
 
     void queryGraphicsRequirements();
+    void setupControllers();
+
+    XrActionSet actionSet = XR_NULL_HANDLE;
+    XrAction actA = XR_NULL_HANDLE, actB = XR_NULL_HANDLE, actX = XR_NULL_HANDLE, actY = XR_NULL_HANDLE;
+    XrAction actInvert = XR_NULL_HANDLE, actStick = XR_NULL_HANDLE;
+    ControllerState controllers;
     static glm::mat4 poseToViewMatrix(const XrPosef& pose);
     static glm::mat4 fovToProjectionMatrix(const XrFovf& fov, float nearZ, float farZ);
 };
