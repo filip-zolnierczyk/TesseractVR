@@ -115,11 +115,11 @@ private:
     VkCommandBuffer commandBuffer;
 
     // --- PAMIĘĆ (UBO + VMA) ---
-    VkBuffer uniformBuffer;
-    VmaAllocation uniformBufferAllocation;
-    void* uniformBufferMapped;
+    VkBuffer uniformBuffers[2]{};
+    VmaAllocation uniformBufferAllocations[2]{};
+    void* uniformBuffersMapped[2]{};
     VkDescriptorPool descriptorPool;
-    VkDescriptorSet descriptorSet;
+    VkDescriptorSet descriptorSets[2]{};
 
     // --- SYNCHRONIZACJA ---
     VkSemaphore imageAvailableSemaphore;
@@ -164,7 +164,7 @@ private:
     void createDescriptorSets();
     void createCommandPool();
     void createCommandBuffer();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkExtent2D extent, uint32_t eyeIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
     void createSyncObjects();
 
     // --- METODY POMOCNICZE ---

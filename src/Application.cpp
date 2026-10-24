@@ -91,7 +91,7 @@ void Application::mainLoop() {
         } else {
             // KLASYCZNY TRYB DESKTOP (Fallback)
             // Stacjonarna kamera w przestrzeni 3D
-            glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.5f), glm::vec3(0.0f, 1.0f, 0.0f));
             glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 10.0f);
             proj[1][1] *= -1; // Specyfika Vulkana: odwrócona oś Y!
 

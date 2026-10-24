@@ -60,7 +60,9 @@ void VulkanRenderer::cleanup() {
     vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
     vkDestroyFence(device, inFlightFence, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-    vmaDestroyBuffer(allocator, uniformBuffer, uniformBufferAllocation);
+    for (size_t eye = 0; eye < 2; eye++) {
+        vmaDestroyBuffer(allocator, uniformBuffers[eye], uniformBufferAllocations[eye]);
+    }
     vkDestroyCommandPool(device, commandPool, nullptr);
 
     cleanupSwapChain();
@@ -98,7 +100,7 @@ void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view,
     }
 
     vkResetCommandBuffer(commandBuffer, 0);
-    recordCommandBuffer(commandBuffer, imageIndex, time, wOffset, view, proj, aXY, aXZ, aXW, aYZ, aYW, aZW);
+    recordCommandBuffer(commandBuffer, imageIndex, swapChainExtent, 0, time, wOffset, view, proj, aXY, aXZ, aXW, aYZ, aYW, aZW);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -626,23 +628,25 @@ void VulkanRenderer::createUniformBuffer() {
     allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
                       VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
-    VmaAllocationInfo allocationInfo;
-    if (vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &uniformBuffer, &uniformBufferAllocation, &allocationInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create uniform buffer!");
+    for (size_t eye = 0; eye < 2; eye++) {
+        VmaAllocationInfo allocationInfo;
+        if (vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &uniformBuffers[eye], &uniformBufferAllocations[eye], &allocationInfo) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create uniform buffer!");
+        }
+        uniformBuffersMapped[eye] = allocationInfo.pMappedData;
     }
-    uniformBufferMapped = allocationInfo.pMappedData;
 }
 
 void VulkanRenderer::createDescriptorPool() {
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = 1;
+    poolSize.descriptorCount = 2;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = 1;
+    poolInfo.maxSets = 2;
 
     if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
@@ -650,31 +654,30 @@ void VulkanRenderer::createDescriptorPool() {
 }
 
 void VulkanRenderer::createDescriptorSets() {
+    VkDescriptorSetLayout layouts[2] = {descriptorSetLayout, descriptorSetLayout};
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = descriptorPool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &descriptorSetLayout;
+    allocInfo.descriptorSetCount = 2;
+    allocInfo.pSetLayouts = layouts;
 
-    if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate descriptor sets!");
     }
 
-    VkDescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = uniformBuffer;
-    bufferInfo.offset = 0;
-    bufferInfo.range = sizeof(UniformBufferObject);
-
-    VkWriteDescriptorSet descriptorWrite{};
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = descriptorSet;
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pBufferInfo = &bufferInfo;
-
-    vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    VkDescriptorBufferInfo bufferInfos[2]{};
+    VkWriteDescriptorSet descriptorWrites[2]{};
+    for (size_t eye = 0; eye < 2; eye++) {
+        bufferInfos[eye].buffer = uniformBuffers[eye];
+        bufferInfos[eye].range = sizeof(UniformBufferObject);
+        descriptorWrites[eye].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[eye].dstSet = descriptorSets[eye];
+        descriptorWrites[eye].dstBinding = 0;
+        descriptorWrites[eye].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[eye].descriptorCount = 1;
+        descriptorWrites[eye].pBufferInfo = &bufferInfos[eye];
+    }
+    vkUpdateDescriptorSets(device, 2, descriptorWrites, 0, nullptr);
 }
 
 void VulkanRenderer::createCommandPool() {
@@ -702,7 +705,10 @@ void VulkanRenderer::createCommandBuffer() {
     }
 }
 
-void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
+void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkExtent2D extent, uint32_t eyeIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
+    if (eyeIndex >= 2) {
+        throw std::out_of_range("eye index must be 0 or 1");
+    }
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -715,7 +721,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     renderPassInfo.renderPass = renderPass;
     renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
     renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapChainExtent;
+    renderPassInfo.renderArea.extent = extent;
 
     VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
     renderPassInfo.clearValueCount = 1;
@@ -725,10 +731,21 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
+    VkViewport viewport{};
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.extent = extent;
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
     UniformBufferObject ubo{};
     ubo.view = view;            // ZMIANA: Pobierane z argumentu (z Application)
     ubo.proj = proj;            // ZMIANA: Pobierane z argumentu
-    ubo.resolution = glm::vec2(swapChainExtent.width, swapChainExtent.height);
+    ubo.resolution = glm::vec2(extent.width, extent.height);
     ubo.time = time;            
     ubo.w_offset = wOffset;    
     ubo.aXY = aXY;
@@ -738,24 +755,10 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     ubo.aYW = aYW;
     ubo.aZW = aZW; 
     
-    memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
-    vmaFlushAllocation(allocator, uniformBufferAllocation, 0, sizeof(ubo));
+    memcpy(uniformBuffersMapped[eyeIndex], &ubo, sizeof(ubo));
+    vmaFlushAllocation(allocator, uniformBufferAllocations[eyeIndex], 0, sizeof(ubo));
     
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-    
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapChainExtent.width);
-    viewport.height = static_cast<float>(swapChainExtent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapChainExtent;
-    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[eyeIndex], 0, nullptr);
 
     vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
