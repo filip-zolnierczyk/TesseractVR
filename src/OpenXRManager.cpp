@@ -312,20 +312,20 @@ glm::mat4 OpenXRManager::poseToViewMatrix(const XrPosef& pose) {
     return glm::inverse(cameraMatrix);
 }
 
-// Standardowa asymetryczna projekcja OpenXR (Vulkan: os Y w dol, glebokosc 0..1)
+// Asymetryczna projekcja OpenXR w konwencji Vulkan (glebokosc 0..1).
 glm::mat4 OpenXRManager::fovToProjectionMatrix(const XrFovf& fov, float nearZ, float farZ) {
     float l = tanf(fov.angleLeft);
     float r = tanf(fov.angleRight);
     float d = tanf(fov.angleDown);
     float u = tanf(fov.angleUp);
     float w = r - l;
-    float h = d - u;
+    float h = u - d;
 
     glm::mat4 proj(0.0f);
     proj[0][0] = 2.0f / w;
     proj[1][1] = 2.0f / h;
-    proj[2][0] = -(r + l) / w;
-    proj[2][1] = -(u + d) / h;
+    proj[2][0] = (r + l) / w;
+    proj[2][1] = (u + d) / h;
     proj[2][2] = farZ / (nearZ - farZ);
     proj[2][3] = -1.0f;
     proj[3][2] = (farZ * nearZ) / (nearZ - farZ);

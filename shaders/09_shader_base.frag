@@ -70,7 +70,7 @@ vec4 getLocalPoint(vec3 p3) {
 float mapScene(vec3 p3) {
     float wSlice = ubo.w_offset;
     vec4 q = vec4(p3, wSlice);
-    q.xyz -= vec3(0.0, 0.0, -1.5);
+    q.xyz -= vec3(0.0, 0.0, -2.5);
 
     q = rotXY(q, ubo.aXY);
     q = rotXZ(q, ubo.aXZ);
@@ -79,7 +79,7 @@ float mapScene(vec3 p3) {
     q = rotYW(q, ubo.aYW);
     q = rotZW(q, ubo.aZW);
 
-    vec4 halfSize = vec4(0.25);
+    vec4 halfSize = vec4(0.2);
     return sdBox4(q, halfSize);
 }
 
@@ -109,14 +109,13 @@ float rayMarch(vec3 ro, vec3 rd) {
 
 void main() {
     mat4 invView = inverse(ubo.view);
+    mat4 invProj = inverse(ubo.proj);
     vec3 ro = invView[3].xyz;
 
     vec2 ndc = uv * 2.0 - 1.0;
-    ndc.y = -ndc.y;
 
-    float tanX = (ndc.x + ubo.proj[2][0]) / ubo.proj[0][0];
-    float tanY = (ndc.y + ubo.proj[2][1]) / abs(ubo.proj[1][1]);
-    vec3 rayDirLocal = normalize(vec3(tanX, tanY, -1.0));
+    vec4 rayView = invProj * vec4(ndc, 1.0, 1.0);
+    vec3 rayDirLocal = normalize(rayView.xyz / rayView.w);
     vec3 rd = normalize((invView * vec4(rayDirLocal, 0.0)).xyz);
 
     float t = rayMarch(ro, rd);
@@ -126,7 +125,7 @@ void main() {
 
         // Pobieramy "lokalny" kształt punktu, żeby sprawdzić na której ścianie 4D wylądowaliśmy
         vec4 local_p = getLocalPoint(p);
-        vec4 halfSize = vec4(0.25);
+        vec4 halfSize = vec4(0.2);
         
         // Normalizujemy punkt względem rozmiaru sześcianu
         vec4 normalized_p = local_p / halfSize;
@@ -152,6 +151,6 @@ void main() {
 
         outColor = vec4(col, 1.0);
     } else {
-        outColor = vec4(0.01, 0.01, 0.02, 1.0);
+        outColor = vec4(0.02, 0.08, 0.18, 1.0);
     }
 }
