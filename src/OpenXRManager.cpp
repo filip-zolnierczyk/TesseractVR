@@ -323,9 +323,9 @@ glm::mat4 OpenXRManager::fovToProjectionMatrix(const XrFovf& fov, float nearZ, f
 
     glm::mat4 proj(0.0f);
     proj[0][0] = 2.0f / w;
-    proj[1][1] = 2.0f / h;
+    proj[1][1] = -2.0f / h;
     proj[2][0] = (r + l) / w;
-    proj[2][1] = (u + d) / h;
+    proj[2][1] = -(u + d) / h;
     proj[2][2] = farZ / (nearZ - farZ);
     proj[2][3] = -1.0f;
     proj[3][2] = (farZ * nearZ) / (nearZ - farZ);

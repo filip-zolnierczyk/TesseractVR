@@ -151,6 +151,6 @@ void main() {
 
         outColor = vec4(col, 1.0);
     } else {
-        outColor = vec4(0.02, 0.08, 0.18, 1.0);
+        outColor = vec4(0.01, 0.01, 0.02, 1.0);
     }
 }
