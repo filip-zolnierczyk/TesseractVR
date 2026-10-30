@@ -144,6 +144,8 @@ void OpenXRManager::createSession(VkInstance vkInstance, VkPhysicalDevice physic
         }
     }
 
+    setupControllers();
+
     uint32_t formatCount = 0;
     xrEnumerateSwapchainFormats(session, 0, &formatCount, nullptr);
     std::vector<int64_t> formats(formatCount);
@@ -189,6 +191,90 @@ void OpenXRManager::createSession(VkInstance vkInstance, VkPhysicalDevice physic
         xrEnumerateSwapchainImages(sc.handle, imageCount, &imageCount,
             reinterpret_cast<XrSwapchainImageBaseHeader*>(sc.images.data()));
     }
+}
+
+void OpenXRManager::setupControllers() {
+    XrActionSetCreateInfo asci{XR_TYPE_ACTION_SET_CREATE_INFO};
+    strncpy(asci.actionSetName, "gameplay", XR_MAX_ACTION_SET_NAME_SIZE);
+    strncpy(asci.localizedActionSetName, "Gameplay", XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE);
+    if (XR_FAILED(xrCreateActionSet(instance, &asci, &actionSet))) {
+        throw std::runtime_error("Nie udalo sie utworzyc XrActionSet.");
+    }
+
+    auto makeAction = [&](XrAction& out, const char* name, XrActionType type) {
+        XrActionCreateInfo aci{XR_TYPE_ACTION_CREATE_INFO};
+        aci.actionType = type;
+        strncpy(aci.actionName, name, XR_MAX_ACTION_NAME_SIZE);
+        strncpy(aci.localizedActionName, name, XR_MAX_LOCALIZED_ACTION_NAME_SIZE);
+        if (XR_FAILED(xrCreateAction(actionSet, &aci, &out))) {
+            throw std::runtime_error(std::string("Nie udalo sie utworzyc akcji: ") + name);
+        }
+    };
+    makeAction(actA, "button_a", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    makeAction(actB, "button_b", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    makeAction(actX, "button_x", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    makeAction(actY, "button_y", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    makeAction(actInvert, "invert", XR_ACTION_TYPE_FLOAT_INPUT);
+    makeAction(actStick, "stick_y", XR_ACTION_TYPE_FLOAT_INPUT);
+
+    auto path = [&](const char* s) {
+        XrPath p = XR_NULL_PATH;
+        xrStringToPath(instance, s, &p);
+        return p;
+    };
+    std::vector<XrActionSuggestedBinding> bindings = {
+        {actA, path("/user/hand/right/input/a/click")},
+        {actB, path("/user/hand/right/input/b/click")},
+        {actX, path("/user/hand/left/input/x/click")},
+        {actY, path("/user/hand/left/input/y/click")},
+        {actInvert, path("/user/hand/left/input/squeeze/value")},
+        {actStick, path("/user/hand/right/input/thumbstick/y")},
+    };
+    XrInteractionProfileSuggestedBinding sb{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+    sb.interactionProfile = path("/interaction_profiles/oculus/touch_controller");
+    sb.suggestedBindings = bindings.data();
+    sb.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
+    if (XR_FAILED(xrSuggestInteractionProfileBindings(instance, &sb))) {
+        throw std::runtime_error("xrSuggestInteractionProfileBindings nie powiodlo sie.");
+    }
+
+    XrSessionActionSetsAttachInfo ai{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+    ai.countActionSets = 1;
+    ai.actionSets = &actionSet;
+    if (XR_FAILED(xrAttachSessionActionSets(session, &ai))) {
+        throw std::runtime_error("xrAttachSessionActionSets nie powiodlo sie.");
+    }
+}
+
+void OpenXRManager::syncControllers() {
+    controllers = {};
+    if (!sessionRunning || actionSet == XR_NULL_HANDLE) return;
+
+    XrActiveActionSet active{actionSet, XR_NULL_PATH};
+    XrActionsSyncInfo si{XR_TYPE_ACTIONS_SYNC_INFO};
+    si.countActiveActionSets = 1;
+    si.activeActionSets = &active;
+    if (xrSyncActions(session, &si) != XR_SUCCESS) return;
+
+    auto getBool = [&](XrAction a) {
+        XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
+        gi.action = a;
+        XrActionStateBoolean st{XR_TYPE_ACTION_STATE_BOOLEAN};
+        return XR_SUCCEEDED(xrGetActionStateBoolean(session, &gi, &st)) && st.isActive && st.currentState;
+    };
+    auto getFloat = [&](XrAction a) {
+        XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
+        gi.action = a;
+        XrActionStateFloat st{XR_TYPE_ACTION_STATE_FLOAT};
+        if (XR_SUCCEEDED(xrGetActionStateFloat(session, &gi, &st)) && st.isActive) return st.currentState;
+        return 0.0f;
+    };
+    controllers.a = getBool(actA);
+    controllers.b = getBool(actB);
+    controllers.x = getBool(actX);
+    controllers.y = getBool(actY);
+    controllers.invert = getFloat(actInvert) > 0.5f;
+    controllers.wAxis = getFloat(actStick);
 }
 
 VkExtent2D OpenXRManager::getEyeExtent(uint32_t eyeIndex) const {
@@ -298,6 +384,7 @@ void OpenXRManager::cleanup() {
         if (sc.handle != XR_NULL_HANDLE) xrDestroySwapchain(sc.handle);
     }
     swapchains.clear();
+    if (actionSet != XR_NULL_HANDLE) { xrDestroyActionSet(actionSet); actionSet = XR_NULL_HANDLE; }
     if (appSpace != XR_NULL_HANDLE) { xrDestroySpace(appSpace); appSpace = XR_NULL_HANDLE; }
     if (session != XR_NULL_HANDLE) { xrDestroySession(session); session = XR_NULL_HANDLE; }
     if (instance != XR_NULL_HANDLE) { xrDestroyInstance(instance); instance = XR_NULL_HANDLE; }

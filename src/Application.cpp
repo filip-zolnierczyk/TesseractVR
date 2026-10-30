@@ -1,5 +1,6 @@
 #include "Application.h"
 #include <stdexcept>
+#include <cmath>
 #include <iostream>
 
 const uint32_t WIDTH = 800;
@@ -51,13 +52,16 @@ void Application::processInput() {
     if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) angleYW += rotSpeed;
     if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) angleZW += rotSpeed;
 
-    // Pad (Xbox-style): A/B/X/Y powielaja klawisze 3/4/5/6
-    GLFWgamepadstate padState;
-    if (glfwGetGamepadState(GLFW_JOYSTICK_1, &padState)) {
-        if (padState.buttons[GLFW_GAMEPAD_BUTTON_A]) angleXW += rotSpeed;
-        if (padState.buttons[GLFW_GAMEPAD_BUTTON_B]) angleYZ += rotSpeed;
-        if (padState.buttons[GLFW_GAMEPAD_BUTTON_X]) angleYW += rotSpeed;
-        if (padState.buttons[GLFW_GAMEPAD_BUTTON_Y]) angleZW += rotSpeed;
+    // Kontrolery Oculus Touch: A/B/X/Y = obroty XW/YZ/YW/ZW, lewy grip odwraca kierunek, prawy drazek = os W
+    if (vrActive) {
+        vr.syncControllers();
+        const auto& c = vr.getControllerState();
+        float padRot = c.invert ? -speed : speed;
+        if (c.a) angleXW += padRot;
+        if (c.b) angleYZ += padRot;
+        if (c.x) angleYW += padRot;
+        if (c.y) angleZW += padRot;
+        if (std::abs(c.wAxis) > 0.15f) currentWOffset += c.wAxis * speed;
     }
 
     bool spaceIsPressed = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
