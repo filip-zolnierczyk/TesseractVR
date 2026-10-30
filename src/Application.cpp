@@ -2,6 +2,8 @@
 #include <stdexcept>
 #include <iostream>
 
+#ifndef TESSERACT_ANDROID
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
@@ -138,3 +140,54 @@ void Application::run() {
     mainLoop();
     cleanup();
 }
+
+#else
+
+#include <chrono>
+#include <android_native_app_glue.h>
+
+void Application::runAndroid(android_app* app) {
+    renderer.setAssetManager(app->activity->assetManager);
+    vr.initSystem(app->activity->vm, app->activity->clazz);
+    xrInstanceExtensions = vr.getRequiredVulkanInstanceExtensions();
+    xrDeviceExtensions = vr.getRequiredVulkanDeviceExtensions();
+    renderer.setPhysicalDeviceSelector([this](VkInstance instance) {
+        return vr.pickVulkanPhysicalDevice(instance);
+    });
+    renderer.init(xrInstanceExtensions, xrDeviceExtensions);
+    vr.createSession(renderer.getInstance(), renderer.getPhysicalDevice(),
+                     renderer.getDevice(), renderer.getGraphicsQueueFamily());
+
+    std::vector<std::vector<VkImage>> imagesPerEye(vr.getEyeCount());
+    for (uint32_t eye = 0; eye < vr.getEyeCount(); ++eye) {
+        imagesPerEye[eye] = vr.getSwapchainImages(eye);
+    }
+    renderer.initXrRenderTargets(vr.getSwapchainFormat(), imagesPerEye);
+    vrActive = true;
+
+    const auto start = std::chrono::steady_clock::now();
+    while (!vr.shouldQuit()) {
+        int events;
+        android_poll_source* source;
+        while (ALooper_pollAll(0, nullptr, &events, reinterpret_cast<void**>(&source)) >= 0) {
+            if (source != nullptr) {
+                source->process(app, source);
+            }
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        shaderTime = std::chrono::duration<float>(now - start).count();
+        vr.pollEvents();
+        vr.renderFrame([this](uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent,
+                              const glm::mat4& view, const glm::mat4& proj) {
+            renderer.renderXrEye(eyeIndex, imageIndex, extent, shaderTime, currentWOffset,
+                                 view, proj, angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);
+        });
+    }
+
+    renderer.waitForIdle();
+    renderer.cleanup();
+    vr.cleanup();
+}
+
+#endif

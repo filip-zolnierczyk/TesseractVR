@@ -20,6 +20,7 @@ Minimalne repo pod inżynierkę: jedna aplikacja Vulkan, full-screen triangle i 
 - **CMake 3.21+**
 - **Vulkan SDK** (z `glslangValidator`)
 - **vcpkg** (menadżer zależności C++)
+- **Android SDK/NDK** (NDK 27, API 29+) oraz **Gradle 8.7+** - tylko dla Questa
 
 ### Biblioteki (instalowane automatycznie przez vcpkg)
 - `glfw3` - obsługa okna i wejścia
@@ -60,6 +61,40 @@ cmake --build --preset release
 ```
 
 Executable będzie dostępny w: `build-vs/TesseractVR/Release/TesseractVR.exe`
+
+### APK dla Meta/Oculus Quest 2
+
+Projekt zawiera osobny target Android arm64, który renderuje bezpośrednio do
+swapchainów OpenXR (nie używa desktopowego GLFW ani okna PCVR).
+
+1. Zainstaluj przez Android Studio: SDK Platform 35, NDK `27.0.12077973`,
+   CMake 3.22.1 oraz Gradle 8.7+.
+2. Ustaw `ANDROID_NDK_ROOT` i `VCPKG_ROOT`. Dla vcpkg zainstaluj zależności
+   dla tripletu `arm64-android`:
+   ```powershell
+   vcpkg install --triplet arm64-android
+   ```
+3. Z głównego folderu projektu skonfiguruj natywny build:
+   ```powershell
+   cmake --preset android-quest2
+   cmake --build --preset quest2-release
+   ```
+4. Zbuduj APK:
+   ```powershell
+   cd android
+   gradle assembleDebug
+   ```
+
+APK znajdzie się w `android/app/build/outputs/apk/debug/app-debug.apk`.
+Można je zainstalować po podłączeniu Questa przez USB i włączeniu trybu
+developerskiego:
+```powershell
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Target Android wymaga uruchomionego runtime OpenXR na Quest 2 oraz zgody
+aplikacji na korzystanie z urządzenia VR. Build Windows pozostaje dostępny
+przez preset `vulkan-windows-x64`.
 
 ## Uruchomienie
 

@@ -5,3 +5,7 @@ out/
 .vscode/
 vcpkg_installed/
 *.mp4
+android/.gradle/
+android/build/
+android/app/build/
+build-android/

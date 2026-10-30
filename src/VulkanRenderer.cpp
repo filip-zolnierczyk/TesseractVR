@@ -47,15 +47,24 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 
 // --- PUBLICZNY INTERFEJS KLASY ---
 
+#ifndef TESSERACT_ANDROID
 void VulkanRenderer::init(GLFWwindow* targetWindow, const std::vector<const char*>& instanceExtensions, const std::vector<const char*>& deviceExtensions) {
     window = targetWindow;
     injectedInstanceExtensions = instanceExtensions;
     injectedDeviceExtensions = deviceExtensions;
     initVulkan();
 }
+#else
+void VulkanRenderer::init(const std::vector<const char*>& instanceExtensions, const std::vector<const char*>& deviceExtensions) {
+    injectedInstanceExtensions = instanceExtensions;
+    injectedDeviceExtensions = deviceExtensions;
+    initVulkan();
+}
+#endif
 void VulkanRenderer::cleanup() {
     destroyXrRenderTargets();
 
+#ifndef TESSERACT_ANDROID
     vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
     vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
     vkDestroyFence(device, inFlightFence, nullptr);
@@ -66,8 +75,11 @@ void VulkanRenderer::cleanup() {
     vkDestroyCommandPool(device, commandPool, nullptr);
 
     cleanupSwapChain();
+#endif
     vmaDestroyAllocator(allocator);
+#ifndef TESSERACT_ANDROID
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
+#endif
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
@@ -77,7 +89,9 @@ void VulkanRenderer::cleanup() {
         DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
     }
 
+#ifndef TESSERACT_ANDROID
     vkDestroySurfaceKHR(instance, surface, nullptr);
+#endif
     vkDestroyInstance(instance, nullptr);
 }
 
@@ -144,6 +158,14 @@ void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view,
 void VulkanRenderer::initVulkan() {
     createInstance();
     setupDebugMessenger();
+#ifdef TESSERACT_ANDROID
+    pickPhysicalDevice();
+    createLogicalDevice();
+    initVMA();
+    createDescriptorSetLayout();
+    createPipelineLayout();
+    createCommandPool();
+#else
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
@@ -160,6 +182,7 @@ void VulkanRenderer::initVulkan() {
     createCommandPool();
     createCommandBuffer();
     createSyncObjects();
+#endif
 }
 
 void VulkanRenderer::initVMA() {
@@ -249,9 +272,11 @@ void VulkanRenderer::setupDebugMessenger() {
 }
 
 void VulkanRenderer::createSurface() {
+#ifndef TESSERACT_ANDROID
     if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
         throw std::runtime_error("failed to create window surface!");
     }
+#endif
 }
 
 void VulkanRenderer::pickPhysicalDevice() {
@@ -290,7 +315,11 @@ void VulkanRenderer::createLogicalDevice() {
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+    std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value()
+#ifndef TESSERACT_ANDROID
+        , indices.presentFamily.value()
+#endif
+    };
 
     float queuePriority = 1.0f;
     for (uint32_t queueFamily : uniqueQueueFamilies) {
@@ -312,7 +341,12 @@ void VulkanRenderer::createLogicalDevice() {
     createInfo.pEnabledFeatures = &deviceFeatures;
 
     // Łączymy bazowe rozszerzenia z tymi od OpenXR
-    std::vector<const char*> allDeviceExtensions = deviceExtensions;
+    std::vector<const char*> allDeviceExtensions;
+#ifndef TESSERACT_ANDROID
+    allDeviceExtensions = deviceExtensions;
+#else
+    allDeviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+#endif
     allDeviceExtensions.insert(allDeviceExtensions.end(), injectedDeviceExtensions.begin(), injectedDeviceExtensions.end());
 
     createInfo.enabledExtensionCount = static_cast<uint32_t>(allDeviceExtensions.size());
@@ -481,6 +515,19 @@ void VulkanRenderer::createRenderPass() {
     }
 }
 
+void VulkanRenderer::createPipelineLayout() {
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create pipeline layout!");
+    }
+}
+
 void VulkanRenderer::createGraphicsPipeline() {
     auto vertShaderCode = readFile("shaders/vert.spv");
     auto fragShaderCode = readFile("shaders/frag.spv");
@@ -556,16 +603,7 @@ void VulkanRenderer::createGraphicsPipeline() {
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-    pipelineLayoutInfo.pushConstantRangeCount = 0;
-    pipelineLayoutInfo.pPushConstantRanges = nullptr;
-    
-    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create pipeline layout!");
-    }
+    createPipelineLayout();
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -866,6 +904,9 @@ bool VulkanRenderer::isDeviceSuitable(VkPhysicalDevice device) {
 
     bool extensionsSupported = checkDeviceExtensionSupport(device);
 
+#ifdef TESSERACT_ANDROID
+    return indices.graphicsFamily.has_value() && extensionsSupported;
+#else
     bool swapChainAdequate = false;
     if (extensionsSupported) {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
@@ -873,6 +914,7 @@ bool VulkanRenderer::isDeviceSuitable(VkPhysicalDevice device) {
     }
 
     return indices.isComplete() && extensionsSupported && swapChainAdequate;
+#endif
 }
 
 bool VulkanRenderer::checkDeviceExtensionSupport(VkPhysicalDevice device) {
@@ -907,12 +949,16 @@ QueueFamilyIndices VulkanRenderer::findQueueFamilies(VkPhysicalDevice device) {
             indices.graphicsFamily = i;
         }
 
+#ifdef TESSERACT_ANDROID
+        indices.presentFamily = indices.graphicsFamily;
+#else
         VkBool32 presentSupport = false;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
         if (presentSupport) {
             indices.presentFamily = i;
         }
+#endif
 
         if (indices.isComplete()) {
             break;
@@ -925,11 +971,15 @@ QueueFamilyIndices VulkanRenderer::findQueueFamilies(VkPhysicalDevice device) {
 }
 
 std::vector<const char*> VulkanRenderer::getRequiredExtensions() {
+#ifdef TESSERACT_ANDROID
+    std::vector<const char*> extensions;
+#else
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions;
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
     std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+#endif
 
     if (enableValidationLayers) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -967,6 +1017,25 @@ bool VulkanRenderer::checkValidationLayerSupport() {
 }
 
 std::vector<char> VulkanRenderer::readFile(const std::string& filename) {
+#ifdef TESSERACT_ANDROID
+    if (assetManager == nullptr) {
+        throw std::runtime_error("Android asset manager nie zostal ustawiony.");
+    }
+
+    AAsset* asset = AAssetManager_open(assetManager, filename.c_str(), AASSET_MODE_BUFFER);
+    if (asset == nullptr) {
+        throw std::runtime_error("Nie mozna otworzyc assetu shadera: " + filename);
+    }
+
+    const auto length = static_cast<size_t>(AAsset_getLength(asset));
+    std::vector<char> buffer(length);
+    if (AAsset_read(asset, buffer.data(), length) != static_cast<int>(length)) {
+        AAsset_close(asset);
+        throw std::runtime_error("Nie mozna odczytac assetu shadera: " + filename);
+    }
+    AAsset_close(asset);
+    return buffer;
+#else
     std::filesystem::path resolvedPath = filename;
 
 #ifdef _WIN32
@@ -993,6 +1062,7 @@ std::vector<char> VulkanRenderer::readFile(const std::string& filename) {
     file.close();
 
     return buffer;
+#endif
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL VulkanRenderer::debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {

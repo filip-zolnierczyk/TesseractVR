@@ -1,7 +1,12 @@
 #pragma once
 
+#ifndef TESSERACT_ANDROID
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#else
+#include <vulkan/vulkan.h>
+#include <android/asset_manager.h>
+#endif
 #include <vk_mem_alloc.h>
 
 #define GLM_FORCE_RADIANS
@@ -48,9 +53,15 @@ struct SwapChainSupportDetails {
 class VulkanRenderer {
 public:
     // API pozwala teraz na wstrzyknięcie rozszerzeń narzucanych przez OpenXR
-    void init(GLFWwindow* window, 
+#ifndef TESSERACT_ANDROID
+    void init(GLFWwindow* window,
               const std::vector<const char*>& instanceExtensions = {}, 
               const std::vector<const char*>& deviceExtensions = {});
+#else
+    void init(const std::vector<const char*>& instanceExtensions = {},
+              const std::vector<const char*>& deviceExtensions = {});
+    void setAssetManager(AAssetManager* manager) { assetManager = manager; }
+#endif
 
     // Pozwala OpenXR narzucić konkretne GPU (musi być ustawione przed init())
     using PhysicalDeviceSelector = std::function<VkPhysicalDevice(VkInstance)>;
@@ -77,7 +88,11 @@ public:
                       float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
 
 private:
+#ifndef TESSERACT_ANDROID
     GLFWwindow* window;
+#else
+    AAssetManager* assetManager = nullptr;
+#endif
     
     // Zapamiętane rozszerzenia narzucone przez zewnątrz
     std::vector<const char*> injectedInstanceExtensions;
@@ -147,6 +162,7 @@ private:
     void initVulkan();
     void initVMA();
     void createInstance();
+    void createPipelineLayout();
     void setupDebugMessenger();
     void createSurface();
     void pickPhysicalDevice();

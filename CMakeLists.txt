@@ -6,7 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Vulkan REQUIRED)
-find_package(glfw3 REQUIRED)
+if(NOT ANDROID)
+    find_package(glfw3 REQUIRED)
+endif()
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(OpenXR CONFIG REQUIRED)
@@ -14,16 +16,45 @@ find_package(OpenXR CONFIG REQUIRED)
 find_program(GLSLANG_VALIDATOR glslangValidator HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 
 set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/${PROJECT_NAME})
-set(SHADERS_DIR ${OUTPUT_DIR}/shaders)
+if(ANDROID)
+    set(SHADERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android/app/src/main/assets/shaders)
+else()
+    set(SHADERS_DIR ${OUTPUT_DIR}/shaders)
+endif()
 
-add_executable(${PROJECT_NAME} src/main.cpp src/Application.cpp src/VulkanRenderer.cpp src/OpenXRManager.cpp)
+if(ANDROID)
+    add_library(${PROJECT_NAME} SHARED
+        android/main.cpp
+        src/Application.cpp
+        src/VulkanRenderer.cpp
+        src/OpenXRManager.cpp
+        ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
+    )
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${ANDROID_NDK}/sources/android/native_app_glue
+    )
+else()
+    add_executable(${PROJECT_NAME} src/main.cpp src/Application.cpp src/VulkanRenderer.cpp src/OpenXRManager.cpp)
+endif()
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR}
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE XR_USE_GRAPHICS_API_VULKAN)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw GPUOpen::VulkanMemoryAllocator glm::glm OpenXR::openxr_loader)
+if(ANDROID)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE TESSERACT_ANDROID XR_USE_PLATFORM_ANDROID)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        Vulkan::Vulkan
+        GPUOpen::VulkanMemoryAllocator
+        glm::glm
+        OpenXR::openxr_loader
+        android
+        log
+    )
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw GPUOpen::VulkanMemoryAllocator glm::glm OpenXR::openxr_loader)
+endif()
 
 add_custom_command(
     OUTPUT ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv
@@ -40,8 +71,10 @@ add_dependencies(${PROJECT_NAME} shaders)
 
 
 # Automatyczne kopiowanie świeżych shaderów obok pliku .exe po kompilacji
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${SHADERS_DIR}
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders
-)
+if(NOT ANDROID)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${SHADERS_DIR}
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders
+    )
+endif()

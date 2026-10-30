@@ -35,6 +35,42 @@ void OpenXRManager::initSystem() {
         throw std::runtime_error("Nie mozna utworzyc instancji OpenXR. Uruchom SteamVR lub Oculus runtime.");
     }
 
+    #ifdef __ANDROID__
+    void OpenXRManager::initSystem(JavaVM* vm, jobject activity) {
+        const char* exts[] = {"XR_KHR_vulkan_enable", "XR_KHR_android_create_instance"};
+        XrInstanceCreateInfoAndroidKHR androidInfo{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
+        androidInfo.applicationVM = vm;
+        androidInfo.applicationActivity = activity;
+
+        XrInstanceCreateInfo ci{XR_TYPE_INSTANCE_CREATE_INFO};
+        ci.next = &androidInfo;
+        ci.enabledExtensionCount = 2;
+        ci.enabledExtensionNames = exts;
+        strncpy(ci.applicationInfo.applicationName, "TesseractVR", XR_MAX_APPLICATION_NAME_SIZE);
+        ci.applicationInfo.applicationVersion = 1;
+        strncpy(ci.applicationInfo.engineName, "TesseractEngine", XR_MAX_ENGINE_NAME_SIZE);
+        ci.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
+
+        if (XR_FAILED(xrCreateInstance(&ci, &instance))) {
+            throw std::runtime_error("Nie mozna utworzyc instancji OpenXR dla Androida.");
+        }
+
+        XrSystemGetInfo sgi{XR_TYPE_SYSTEM_GET_INFO};
+        sgi.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
+        if (XR_FAILED(xrGetSystem(instance, &sgi, &systemId))) {
+            throw std::runtime_error("Nie znaleziono Oculus Quest.");
+        }
+
+        queryGraphicsRequirements();
+
+        uint32_t viewCount = 0;
+        xrEnumerateViewConfigurationViews(instance, systemId, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, 0, &viewCount, nullptr);
+        viewConfigs.resize(viewCount, {XR_TYPE_VIEW_CONFIGURATION_VIEW});
+        xrEnumerateViewConfigurationViews(instance, systemId, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, viewCount, &viewCount, viewConfigs.data());
+        views.resize(viewCount, {XR_TYPE_VIEW});
+    }
+    #endif
+
     XrSystemGetInfo sgi{XR_TYPE_SYSTEM_GET_INFO};
     sgi.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
     if (XR_FAILED(xrGetSystem(instance, &sgi, &systemId))) {

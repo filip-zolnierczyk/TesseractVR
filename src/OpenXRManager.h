@@ -4,6 +4,9 @@
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
+#ifdef __ANDROID__
+#include <jni.h>
+#endif
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -24,6 +27,9 @@ public:
 
     // Krok 1: instancja OpenXR + system (headset). Rzuca std::runtime_error jesli brak runtime/headsetu.
     void initSystem();
+#ifdef __ANDROID__
+    void initSystem(JavaVM* vm, jobject activity);
+#endif
 
     // Krok 2: rozszerzenia Vulkana wymagane przez runtime (wywolac przed VulkanRenderer::init)
     std::vector<const char*> getRequiredVulkanInstanceExtensions();

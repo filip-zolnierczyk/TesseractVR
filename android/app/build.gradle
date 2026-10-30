@@ -1,0 +1,43 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "pl.tesseractvr"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "pl.tesseractvr"
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DCMAKE_BUILD_TYPE=Release"
+                def vcpkgRoot = System.getenv("VCPKG_ROOT")
+                if (vcpkgRoot != null) {
+                    arguments "-DCMAKE_TOOLCHAIN_FILE=${vcpkgRoot}/scripts/buildsystems/vcpkg.cmake",
+                             "-DVCPKG_TARGET_TRIPLET=arm64-android"
+                }
+                cppFlags "-std=c++17"
+            }
+        }
+    }
+
+    ndkVersion "27.0.12077973"
+
+    externalNativeBuild {
+        cmake {
+            path "../../CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs = ["src/main/assets"]
+        }
+    }
+}

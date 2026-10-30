@@ -2,14 +2,23 @@
 
 #include "VulkanRenderer.h"
 #include "OpenXRManager.h"
+#ifndef TESSERACT_ANDROID
 #include <GLFW/glfw3.h>
+#else
+struct android_app;
+#endif
 
 class Application {
 public:
     void run();
+#ifdef TESSERACT_ANDROID
+    void runAndroid(android_app* app);
+#endif
 
 private:
+#ifndef TESSERACT_ANDROID
     GLFWwindow* window;
+#endif
     VulkanRenderer renderer;
     OpenXRManager vr;
     bool vrActive = false; // true, gdy sesja OpenXR zostala pomyslnie utworzona
@@ -32,7 +41,9 @@ private:
 
     void initWindow();
     void initVR();
+#ifndef TESSERACT_ANDROID
     void processInput();
+#endif
     void mainLoop();
     void cleanup();
 };

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <exception>
 
+#ifndef TESSERACT_ANDROID
 int main() {
     Application app;
 
@@ -11,6 +12,7 @@ int main() {
         std::cerr << "Blad krytyczny: " << e.what() << std::endl;
         return EXIT_FAILURE;
     }
+    #endif
 
     return EXIT_SUCCESS;
 }
