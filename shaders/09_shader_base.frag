@@ -18,9 +18,6 @@ layout(binding = 0) uniform UniformBufferObject {
     float aZW;
 } ubo;
 
-<<<<<<< Updated upstream
-// 4D plane rotations implemented as inplace transforms on vec4
-=======
 // ==========================================
 // CONFIGURATION SWITCHES (Easily exchangeable)
 // ==========================================
@@ -34,7 +31,6 @@ layout(binding = 0) uniform UniformBufferObject {
 // ==========================================
 // 4D PLANE ROTATIONS
 // ==========================================
->>>>>>> Stashed changes
 vec4 rotXY(vec4 p, float a) {
     float c = cos(a), s = sin(a);
     return vec4(c * p.x - s * p.y, s * p.x + c * p.y, p.z, p.w);
@@ -60,13 +56,9 @@ vec4 rotZW(vec4 p, float a) {
     return vec4(p.x, p.y, c * p.z - s * p.w, s * p.z + c * p.w);
 }
 
-<<<<<<< Updated upstream
-// 4D box (hypercube) SDF
-=======
 // ==========================================
 // 4D SDF PRIMITIVES
 // ==========================================
->>>>>>> Stashed changes
 float sdBox4(vec4 p, vec4 b) {
     vec4 d = abs(p) - b;
     vec4 mx = max(d, vec4(0.0));
@@ -75,12 +67,6 @@ float sdBox4(vec4 p, vec4 b) {
     return outside + inside;
 }
 
-<<<<<<< Updated upstream
-// 4D sphere SDF
-float sdSphere4(vec4 p, float r) {
-    return length(p) - r;
-}
-=======
 float sdSphere4(vec4 p, float r) {
     return length(p) - r;
 }
@@ -135,7 +121,6 @@ vec4 getLocalPoint(vec3 p3) {
     float wSlice = ubo.w_offset;
     vec4 p = vec4(p3, wSlice);
     p.xyz -= vec3(0.0, 0.0, -2.5);
->>>>>>> Stashed changes
 
 // Exact 4D capsule: distance to a segment in 4D, minus radius
 float sdCapsule4(vec4 p, vec4 a, vec4 b, float r) {
@@ -197,29 +182,6 @@ int shapeId = 0; // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=to
 
 float mapScene(vec3 p3) {
     vec4 p = getLocalPoint(p3);
-<<<<<<< Updated upstream
-
-    if (shapeId == 0) {
-        return sdBox4(p, vec4(0.45, 0.30, 0.20, 0.15));
-    } else if (shapeId == 1) {
-        return sdSphere4(p, 0.45);
-    } else if (shapeId == 2) {
-        return sdCapsule4(
-            p,
-            vec4(-0.35, 0.0, 0.0, 0.0),
-            vec4( 0.35, 0.0, 0.0, 0.0),
-            0.15
-        );
-    } else if (shapeId == 3) {
-        return sdRoundedBox4(p, vec4(0.35, 0.25, 0.18, 0.12), 0.06);
-    } else if (shapeId == 4) {
-        return sdEllipsoid4(p, vec4(0.50, 0.35, 0.25, 0.20));
-    } else if (shapeId == 5) {
-        return sdCliffordTorus4(p, vec2(0.35, 0.35), 0.10);
-    }else {
-        return sdCrossPolytope4(p, 0.75);
-    }
-=======
     
     #if SHAPE_ID == 0
         return sdBox4(p, vec4(0.45, 0.30, 0.20, 0.15));
@@ -236,7 +198,6 @@ float mapScene(vec3 p3) {
     #else
         return sdCrossPolytope4(p, 0.75);
     #endif
->>>>>>> Stashed changes
 }
 
 // ==========================================
@@ -282,14 +243,8 @@ float rayMarch_fast(vec3 ro, vec3 rd) {
     const float EPS = 1e-3;
     const float MULT_START = 1.0;
     const float MULT_GROWTH = 1.1;
-<<<<<<< Updated upstream
-
     float mult = MULT_START;
 
-=======
-    float mult = MULT_START;
-
->>>>>>> Stashed changes
     for (int i = 0; i < MAX_STEPS; ++i) {
         vec3 pos = ro + rd * t;
         float d = mapScene(pos);
@@ -328,14 +283,6 @@ float rayMarch_fast(vec3 ro, vec3 rd) {
             return 0.5 * (a + b);
         }
 
-<<<<<<< Updated upstream
-        if (mult < 1.7){
-            mult *= MULT_GROWTH;
-        }
-    }
-
-    return -1.0;
-=======
         if (mult < 1.7) {
             mult *= MULT_GROWTH;
         }
@@ -375,7 +322,6 @@ vec3 getFaceColor(vec4 local_p, vec4 halfSize) {
         return local_p.z >= 0.0 ? vec3(0.15, 0.35, 1.0) : vec3(0.02, 0.08, 0.55);
     }
     return local_p.w >= 0.0 ? vec3(1.0, 0.85, 0.05) : vec3(0.85, 0.3, 0.02);
->>>>>>> Stashed changes
 }
 
 vec3 getStableFaceColor(vec4 local_p, vec4 halfSize) {
@@ -415,27 +361,6 @@ void main() {
     vec3 rayDirLocal = normalize(target.xyz / target.w);
     vec3 rd = normalize((invView * vec4(rayDirLocal, 0.0)).xyz);
 
-<<<<<<< Updated upstream
-    float t = rayMarch(ro, rd);
-    
-    if (t > 0.0) {
-        vec3 p = ro + rd * t;
-        vec3 n = getNormal(p);
-
-        vec3 an = abs(n);
-        vec3 faceColor = vec3(0.7);
-        if (an.x > an.y && an.x > an.z) {
-            faceColor = (n.x > 0.0) ? vec3(1.0, 0.3, 0.3) : vec3(0.6, 0.2, 0.6);
-        } else if (an.y > an.x && an.y > an.z) {
-            faceColor = (n.y > 0.0) ? vec3(0.3, 1.0, 0.3) : vec3(0.2, 0.7, 0.7);
-        } else {
-            faceColor = (n.z > 0.0) ? vec3(0.3, 0.5, 1.0) : vec3(1.0, 0.95, 0.2);
-        }
-
-        vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
-        float diff = max(dot(n, lightDir), 0.0);
-        vec3 col = faceColor * (0.25 + 0.75 * diff);
-=======
     #if RAYMARCH_MODE == 1
         float t = rayMarch_fast(ro, rd);
     #else
@@ -463,7 +388,6 @@ void main() {
         vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
         float diff = max(dot(n, lightDir), 0.0);
         vec3 col = baseColor * (0.25 + 0.75 * diff);
->>>>>>> Stashed changes
 
         outColor = vec4(col, 1.0);
     } else {

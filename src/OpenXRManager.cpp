@@ -20,11 +20,6 @@ T getXrFunction(XrInstance instance, const char* name) {
 OpenXRManager::~OpenXRManager() {
     cleanup();
 }
-bool OpenXRManager::isRuntimeAvailable() {
-    uint32_t extensionCount = 0;
-    XrResult result = xrEnumerateInstanceExtensionProperties(nullptr, 0, &extensionCount, nullptr);
-    return result != XR_ERROR_RUNTIME_UNAVAILABLE && result != XR_ERROR_FORM_FACTOR_UNSUPPORTED;
-}
 
 bool OpenXRManager::isRuntimeAvailable() {
     uint32_t extensionCount = 0;
