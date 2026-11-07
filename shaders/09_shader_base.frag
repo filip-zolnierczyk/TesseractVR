@@ -9,7 +9,6 @@ layout(binding = 0) uniform UniformBufferObject {
     vec2 resolution;
     float time;
     float w_offset;
-    float nearPlane;
     float aXY;
     float aXZ;
     float aXW;
