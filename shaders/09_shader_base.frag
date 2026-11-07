@@ -18,14 +18,14 @@ layout(binding = 0) uniform UniformBufferObject {
 } ubo;
 
 // ==========================================
-// CONFIGURATION SWITCHES (Easily exchangeable)
+// CONFIGURATION SWITCHES
 // ==========================================
-#define SHAPE_ID 1      // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=torus, 6=cross-polytope
+#define SHAPE_ID 0      // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=torus, 6=cross-polytope
 #define RAYMARCH_MODE 0 // 0 = standard rayMarch, 1 = rayMarch_fast
 #define COLOR_MODE 3    // 0 = Normal-based face color
-                        // 1 = 4D Face color v1
-                        // 2 = 4D Normalized coordinate face color v2
-                        // 3 = Solid flat color
+                        // 1 = 4D Face color 
+                        // 2 = 4D Face color, jitter-free
+                        // 3 = Solid color
 
 // ==========================================
 // 4D PLANE ROTATIONS
@@ -121,63 +121,15 @@ vec4 getLocalPoint(vec3 p3) {
     vec4 p = vec4(p3, wSlice);
     p.xyz -= vec3(0.0, 0.0, -2.5);
 
-// Exact 4D capsule: distance to a segment in 4D, minus radius
-float sdCapsule4(vec4 p, vec4 a, vec4 b, float r) {
-    vec4 pa = p - a;
-    vec4 ba = b - a;
-    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-    return length(pa - ba * h) - r;
-}
-
-// Rounded 4D box
-float sdRoundedBox4(vec4 p, vec4 b, float r) {
-    return sdBox4(p, b) - r;
-}
-
-// 4D ellipsoid-like shape
-float sdEllipsoid4(vec4 p, vec4 r) {
-    vec4 q = p / r;
-    float scale = min(min(r.x, r.y), min(r.z, r.w));
-    return (length(q) - 1.0) * scale;
-}
-
-// 4D "Clifford-torus-like" form:
-// two 2D circles coupled together in orthogonal planes
-float sdCliffordTorus4(vec4 p, vec2 majorRadii, float tubeR) {
-    float a = length(p.xy) - majorRadii.x;
-    float b = length(p.zw) - majorRadii.y;
-    return length(vec2(a, b)) - tubeR;
-}
-
-// Simple 4D cross-polytope
-float sdCrossPolytope4(vec4 p, float r) {
-    return (abs(p.x) + abs(p.y) + abs(p.z) + abs(p.w)) - r;
-}
-
-// Stała pozycja tesseraktu w przestrzeni 3D
-const vec3 TESSERACT_POS = vec3(0.0, 0.0, 0.0);
-
-// NOWA FUNKCJA: Wyciąga lokalny, obrócony punkt w 4D
-vec4 getLocalPoint(vec3 p3) {
-    // Przesunięcie punktu ray-marching do lokalnego CS tesseraktu
-    // Dzięki temu tesserakt pozostaje nieruchomy w przestrzeni, niezależnie od pozycji kamery
-    vec3 p_local = p3 - TESSERACT_POS;
-    
-    float wSlice = ubo.w_offset;
-    vec4 p = vec4(p_local, wSlice);
-
-    float t = ubo.time;
-    p = rotXY(p, ubo.aXY); 
-    p = rotXZ(p, ubo.aXZ); 
-    p = rotXW(p, ubo.aXW + t * 0.45); 
-    p = rotYZ(p, ubo.aYZ); 
-    p = rotYW(p, ubo.aYW); 
+    p = rotXY(p, ubo.aXY);
+    p = rotXZ(p, ubo.aXZ);
+    p = rotXW(p, ubo.aXW);
+    p = rotYZ(p, ubo.aYZ);
+    p = rotYW(p, ubo.aYW);
     p = rotZW(p, ubo.aZW);
     
     return p;
 }
-
-int shapeId = 0; // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=torus-like, 6=cross-polytope
 
 float mapScene(vec3 p3) {
     vec4 p = getLocalPoint(p3);
@@ -347,17 +299,14 @@ vec3 getSolidColor() {
 // MAIN FUNCTION
 // ==========================================
 void main() {
-    // Rotacja kamery
     mat4 invView = inverse(ubo.view);
-    
-    // Ray origin: zawsze w tym samym punkcie dla obu oczu (center point, nie IPD-shifted)
-    // Ignorujemy translacyjny offset z IPD - pracujemy tylko z rotacją
-    vec3 ro = vec3(0.0, 1.3, 3.0);  // Stała pozycja (jak w STAGE reference space)
-
-    // Obliczenie wektora promienia z uwzględnieniem perspektywy i FOV gogli
     mat4 invProj = inverse(ubo.proj);
-    vec4 target = invProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
-    vec3 rayDirLocal = normalize(target.xyz / target.w);
+    vec3 ro = invView[3].xyz;
+
+    vec2 ndc = uv * 2.0 - 1.0;
+
+    vec4 rayView = invProj * vec4(ndc, 1.0, 1.0);
+    vec3 rayDirLocal = normalize(rayView.xyz / rayView.w);
     vec3 rd = normalize((invView * vec4(rayDirLocal, 0.0)).xyz);
 
     #if RAYMARCH_MODE == 1
