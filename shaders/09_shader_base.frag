@@ -22,7 +22,7 @@ layout(binding = 0) uniform UniformBufferObject {
 // ==========================================
 #define SHAPE_ID 0      // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=torus, 6=cross-polytope
 #define RAYMARCH_MODE 0 // 0 = standard rayMarch, 1 = rayMarch_fast
-#define COLOR_MODE 3    // 0 = Normal-based face color
+#define COLOR_MODE 1    // 0 = Normal-based face color
                         // 1 = 4D Face color 
                         // 2 = 4D Face color, jitter-free
                         // 3 = Solid color
@@ -333,9 +333,12 @@ void main() {
             baseColor = getSolidColor();
         #endif
 
-        vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
-        float diff = max(dot(n, lightDir), 0.0);
-        vec3 col = baseColor * (0.25 + 0.75 * diff);
+        vec3 col = baseColor;
+        #if COLOR_MODE == 0
+            vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
+            float diff = max(dot(n, lightDir), 0.0);
+            col *= 0.25 + 0.75 * diff;
+        #endif
 
         outColor = vec4(col, 1.0);
     } else {
