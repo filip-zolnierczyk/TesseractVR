@@ -28,6 +28,7 @@ struct UniformBufferObject {
     alignas(4)  float aYZ;
     alignas(4)  float aYW;
     alignas(4)  float aZW;     
+    alignas(4)  float shapeId;
 };
 
 struct QueueFamilyIndices {
@@ -58,7 +59,7 @@ public:
     void setPhysicalDeviceSelector(PhysicalDeviceSelector selector) { physicalDeviceSelector = std::move(selector); }
               
     // Silnik będzie od teraz rysował bazując na macierzach oczu z VR
-    void drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
+    void drawFrame(float time, float wOffset, float shapeId, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
     void cleanup();
     void waitForIdle();
 
@@ -73,7 +74,7 @@ public:
     // imagesPerEye[eye] to lista obrazow VkImage nalezacych do XrSwapchain danego oka.
     void initXrRenderTargets(VkFormat colorFormat, const std::vector<std::vector<VkImage>>& imagesPerEye);
     void destroyXrRenderTargets();
-    void renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent, float time, float wOffset,
+    void renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent, float time, float wOffset, float shapeId,
                       const glm::mat4& view, const glm::mat4& proj,
                       float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
 
@@ -165,7 +166,7 @@ private:
     void createDescriptorSets();
     void createCommandPool();
     void createCommandBuffer();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkExtent2D extent, uint32_t eyeIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkExtent2D extent, uint32_t eyeIndex, float time, float wOffset, float shapeId, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW);
     void createSyncObjects();
 
     // --- METODY POMOCNICZE ---

@@ -220,9 +220,14 @@ void OpenXRManager::setupControllers() {
     makeAction(actB, "button_b", XR_ACTION_TYPE_BOOLEAN_INPUT);
     makeAction(actX, "button_x", XR_ACTION_TYPE_BOOLEAN_INPUT);
     makeAction(actY, "button_y", XR_ACTION_TYPE_BOOLEAN_INPUT);
-    makeAction(actInvert, "invert", XR_ACTION_TYPE_FLOAT_INPUT);
+    makeAction(actLeftGrip, "left_grip", XR_ACTION_TYPE_FLOAT_INPUT);
+    makeAction(actRightGrip, "right_grip", XR_ACTION_TYPE_FLOAT_INPUT);
+    makeAction(actLeftTrigger, "left_trigger", XR_ACTION_TYPE_FLOAT_INPUT);
+    makeAction(actRightTrigger, "right_trigger", XR_ACTION_TYPE_FLOAT_INPUT);
     makeAction(actLeftStick, "left_stick", XR_ACTION_TYPE_VECTOR2F_INPUT);
     makeAction(actRightStick, "right_stick", XR_ACTION_TYPE_VECTOR2F_INPUT);
+    makeAction(actLeftGripPose, "left_grip_pose", XR_ACTION_TYPE_POSE_INPUT);
+    makeAction(actRightGripPose, "right_grip_pose", XR_ACTION_TYPE_POSE_INPUT);
 
     auto path = [&](const char* s) {
         XrPath p = XR_NULL_PATH;
@@ -234,9 +239,14 @@ void OpenXRManager::setupControllers() {
         {actB, path("/user/hand/right/input/b/click")},
         {actX, path("/user/hand/left/input/x/click")},
         {actY, path("/user/hand/left/input/y/click")},
-        {actInvert, path("/user/hand/left/input/squeeze/value")},
+        {actLeftGrip, path("/user/hand/left/input/squeeze/value")},
+        {actRightGrip, path("/user/hand/right/input/squeeze/value")},
+        {actLeftTrigger, path("/user/hand/left/input/trigger/value")},
+        {actRightTrigger, path("/user/hand/right/input/trigger/value")},
         {actLeftStick, path("/user/hand/left/input/thumbstick")},
         {actRightStick, path("/user/hand/right/input/thumbstick")},
+        {actLeftGripPose, path("/user/hand/left/input/grip/pose")},
+        {actRightGripPose, path("/user/hand/right/input/grip/pose")},
     };
     XrInteractionProfileSuggestedBinding sb{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
     sb.interactionProfile = path("/interaction_profiles/oculus/touch_controller");
@@ -245,6 +255,18 @@ void OpenXRManager::setupControllers() {
     if (XR_FAILED(xrSuggestInteractionProfileBindings(instance, &sb))) {
         throw std::runtime_error("xrSuggestInteractionProfileBindings nie powiodlo sie.");
     }
+
+    auto createActionSpace = [&](XrAction action, XrSpace& space) {
+        XrActionSpaceCreateInfo asci{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+        asci.action = action;
+        asci.subactionPath = XR_NULL_PATH;
+        asci.poseInActionSpace = {{0, 0, 0, 1}, {0, 0, 0}};
+        if (XR_FAILED(xrCreateActionSpace(session, &asci, &space))) {
+            throw std::runtime_error("Nie udalo sie utworzyc przestrzeni chwytu kontrolera.");
+        }
+    };
+    createActionSpace(actLeftGripPose, leftGripSpace);
+    createActionSpace(actRightGripPose, rightGripSpace);
 
     XrSessionActionSetsAttachInfo ai{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
     ai.countActionSets = 1;
@@ -292,11 +314,48 @@ void OpenXRManager::syncControllers() {
     controllers.b = getBool(actB);
     controllers.x = getBool(actX);
     controllers.y = getBool(actY);
-    controllers.invert = getFloat(actInvert) > 0.5f;
+    controllers.leftGrip = getFloat(actLeftGrip) > 0.5f;
+    controllers.rightGrip = getFloat(actRightGrip) > 0.5f;
+    controllers.leftTrigger = getFloat(actLeftTrigger) > 0.5f;
+    controllers.rightTrigger = getFloat(actRightTrigger) > 0.5f;
     controllers.leftStickX = leftStick.x;
     controllers.leftStickY = leftStick.y;
     controllers.rightStickX = rightStick.x;
     controllers.rightStickY = rightStick.y;
+
+    auto readGripDelta = [&](XrSpace space, bool gripHeld, glm::quat& previous, bool& hasPrevious) {
+        if (!gripHeld || lastPredictedDisplayTime == 0) {
+            hasPrevious = false;
+            return glm::vec3(0.0f);
+        }
+
+        XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+        if (XR_FAILED(xrLocateSpace(space, appSpace, lastPredictedDisplayTime, &location)) ||
+            (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) == 0) {
+            hasPrevious = false;
+            return glm::vec3(0.0f);
+        }
+
+        const XrQuaternionf& orientation = location.pose.orientation;
+        glm::quat current(orientation.w, orientation.x, orientation.y, orientation.z);
+        if (!hasPrevious) {
+            previous = current;
+            hasPrevious = true;
+            return glm::vec3(0.0f);
+        }
+
+        glm::quat delta = current * glm::inverse(previous);
+        previous = current;
+        if (delta.w < 0.0f) {
+            delta = -delta;
+        }
+        return glm::vec3(delta.x, delta.y, delta.z) * 2.0f;
+    };
+
+    controllers.leftGripDelta = readGripDelta(leftGripSpace, controllers.leftGrip,
+                                               previousLeftGripOrientation, hasPreviousLeftGripOrientation);
+    controllers.rightGripDelta = readGripDelta(rightGripSpace, controllers.rightGrip,
+                                                previousRightGripOrientation, hasPreviousRightGripOrientation);
 }
 
 VkExtent2D OpenXRManager::getEyeExtent(uint32_t eyeIndex) const {
@@ -343,6 +402,7 @@ void OpenXRManager::renderFrame(const EyeRenderFn& renderEye) {
     XrFrameWaitInfo fwi{XR_TYPE_FRAME_WAIT_INFO};
     XrFrameState fs{XR_TYPE_FRAME_STATE};
     if (XR_FAILED(xrWaitFrame(session, &fwi, &fs))) return;
+    lastPredictedDisplayTime = fs.predictedDisplayTime;
 
     XrFrameBeginInfo fbi{XR_TYPE_FRAME_BEGIN_INFO};
     if (XR_FAILED(xrBeginFrame(session, &fbi))) return;
@@ -406,6 +466,8 @@ void OpenXRManager::cleanup() {
         if (sc.handle != XR_NULL_HANDLE) xrDestroySwapchain(sc.handle);
     }
     swapchains.clear();
+    if (leftGripSpace != XR_NULL_HANDLE) { xrDestroySpace(leftGripSpace); leftGripSpace = XR_NULL_HANDLE; }
+    if (rightGripSpace != XR_NULL_HANDLE) { xrDestroySpace(rightGripSpace); rightGripSpace = XR_NULL_HANDLE; }
     if (actionSet != XR_NULL_HANDLE) { xrDestroyActionSet(actionSet); actionSet = XR_NULL_HANDLE; }
     if (appSpace != XR_NULL_HANDLE) { xrDestroySpace(appSpace); appSpace = XR_NULL_HANDLE; }
     if (session != XR_NULL_HANDLE) { xrDestroySession(session); session = XR_NULL_HANDLE; }

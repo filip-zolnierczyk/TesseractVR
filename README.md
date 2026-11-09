@@ -86,7 +86,8 @@ cd build-vs/TesseractVR/Release
 | **Prawa gałka X** | Obrót w płaszczyźnie **YZ** |
 | **Prawa gałka Y** | Przesunięcie przekroju w osi **W** |
 | **A / B / X / Y** | Obrót w płaszczyznach **XW / YZ / YW / ZW** |
-| **Lewy grip** | Odwrócenie kierunku obrotu |
+| **Lewy grip + ruch kontrolera** | Obrót 3D w płaszczyznach **XY/XZ/YZ** |
+| **Prawy grip + ruch kontrolera** | Obrót 4D w płaszczyznach **XW/YW/ZW** |
 | **Shift** + (1-6) | Rotacja w **przeciwnym kierunku** |
 | **Spacja** | **Pauza/Wznowienie** animacji |
 | **Esc** | **Zamknięcie** okna |

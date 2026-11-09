@@ -17,6 +17,9 @@ private:
     std::vector<const char*> xrDeviceExtensions;
     
     float currentWOffset = 0.0f; // Nasza zmienna dla 4 wymiaru
+    int currentShape = 0;
+    bool leftTriggerWasPressed = false;
+    bool rightTriggerWasPressed = false;
     
     float angleXY = 0.0f;
     float angleXZ = 0.0f;

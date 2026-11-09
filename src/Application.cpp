@@ -55,19 +55,41 @@ void Application::processInput() {
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) angleXZ -= rotSpeed;
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) angleXZ += rotSpeed;
 
-    // Oculus Touch: lewa galka = XY/XZ, prawa galka X = YZ, prawa galka Y = os W.
+    // Oculus Touch: galki i przyciski pozostaja dostepne jako sterowanie pomocnicze.
     if (vrActive) {
         vr.syncControllers();
         const auto& c = vr.getControllerState();
-        float padRot = c.invert ? -speed : speed;
-        if (c.a) angleXW += padRot;
-        if (c.b) angleYZ += padRot;
-        if (c.x) angleYW += padRot;
-        if (c.y) angleZW += padRot;
-        if (std::abs(c.leftStickX) > 0.15f) angleXY += c.leftStickX * padRot;
-        if (std::abs(c.leftStickY) > 0.15f) angleXZ -= c.leftStickY * padRot;
-        if (std::abs(c.rightStickX) > 0.15f) angleYZ += c.rightStickX * padRot;
+        const bool leftTriggerPressed = c.leftTrigger && !leftTriggerWasPressed;
+        const bool rightTriggerPressed = c.rightTrigger && !rightTriggerWasPressed;
+        if (leftTriggerPressed || rightTriggerPressed) {
+            currentShape = (currentShape + (rightTriggerPressed ? 1 : -1) + 7) % 7;
+            currentWOffset = 0.0f;
+            angleXY = 0.0f;
+            angleXZ = 0.0f;
+            angleXW = 0.0f;
+            angleYZ = 0.0f;
+            angleYW = 0.0f;
+            angleZW = 0.0f;
+        }
+        leftTriggerWasPressed = c.leftTrigger;
+        rightTriggerWasPressed = c.rightTrigger;
+
+        if (c.a) angleXW += speed;
+        if (c.b) angleYZ += speed;
+        if (c.x) angleYW += speed;
+        if (c.y) angleZW += speed;
+        if (std::abs(c.leftStickX) > 0.15f) angleXY += c.leftStickX * speed;
+        if (std::abs(c.leftStickY) > 0.15f) angleXZ -= c.leftStickY * speed;
+        if (std::abs(c.rightStickX) > 0.15f) angleYZ += c.rightStickX * speed;
         if (std::abs(c.rightStickY) > 0.15f) currentWOffset += c.rightStickY * speed;
+
+        constexpr float gripSensitivity = 1.5f;
+        angleXY += c.leftGripDelta.z * gripSensitivity;
+        angleXZ += c.leftGripDelta.y * gripSensitivity;
+        angleYZ += c.leftGripDelta.x * gripSensitivity;
+        angleXW += c.rightGripDelta.x * gripSensitivity;
+        angleYW += c.rightGripDelta.y * gripSensitivity;
+        angleZW += c.rightGripDelta.z * gripSensitivity;
     }
 
     bool spaceIsPressed = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
@@ -110,7 +132,7 @@ void Application::mainLoop() {
             vr.pollEvents();
             vr.renderFrame([&](uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent,
                                 const glm::mat4& view, const glm::mat4& proj) {
-                renderer.renderXrEye(eyeIndex, imageIndex, extent, shaderTime, currentWOffset, view, proj,
+                renderer.renderXrEye(eyeIndex, imageIndex, extent, shaderTime, currentWOffset, static_cast<float>(currentShape), view, proj,
                                       angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);
             });
         } else {
@@ -120,7 +142,8 @@ void Application::mainLoop() {
             glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 10.0f);
             proj[1][1] *= -1; // Specyfika Vulkana: odwrócona oś Y!
 
-            renderer.drawFrame(shaderTime, currentWOffset, view, proj, angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);
+            renderer.drawFrame(shaderTime, currentWOffset, static_cast<float>(currentShape), view, proj,
+                               angleXY, angleXZ, angleXW, angleYZ, angleYW, angleZW);
         }
     }
     
