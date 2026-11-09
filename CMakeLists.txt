@@ -9,18 +9,21 @@ find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
+find_package(OpenXR CONFIG REQUIRED)
 
 find_program(GLSLANG_VALIDATOR glslangValidator HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 
 set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/${PROJECT_NAME})
 set(SHADERS_DIR ${OUTPUT_DIR}/shaders)
 
-add_executable(${PROJECT_NAME} src/main.cpp src/Application.cpp src/VulkanRenderer.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp src/Application.cpp src/VulkanRenderer.cpp src/OpenXRManager.cpp)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR}
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw GPUOpen::VulkanMemoryAllocator glm::glm)
+target_compile_definitions(${PROJECT_NAME} PRIVATE XR_USE_GRAPHICS_API_VULKAN)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw GPUOpen::VulkanMemoryAllocator glm::glm OpenXR::openxr_loader)
 
 add_custom_command(
     OUTPUT ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv

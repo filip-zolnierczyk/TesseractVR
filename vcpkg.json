@@ -5,6 +5,7 @@
   "dependencies": [
     "glfw3",
     "vulkan-memory-allocator",
-    "glm"
+    "glm",
+    "openxr-loader"
   ]
 }
