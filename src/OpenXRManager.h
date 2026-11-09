@@ -42,11 +42,14 @@ public:
 
     void pollEvents();
 
-    // Stan kontrolerow Touch: A/B (prawy), X/Y (lewy), lewy grip = odwrocenie kierunku, prawy drazek Y = os W
+    // Stan kontrolerow Touch: przyciski A/B/X/Y, obie galki analogowe i lewy grip.
     struct ControllerState {
         bool a = false, b = false, x = false, y = false;
         bool invert = false;
-        float wAxis = 0.0f;
+        float leftStickX = 0.0f;
+        float leftStickY = 0.0f;
+        float rightStickX = 0.0f;
+        float rightStickY = 0.0f;
     };
     void syncControllers();
     const ControllerState& getControllerState() const { return controllers; }
@@ -87,7 +90,8 @@ private:
 
     XrActionSet actionSet = XR_NULL_HANDLE;
     XrAction actA = XR_NULL_HANDLE, actB = XR_NULL_HANDLE, actX = XR_NULL_HANDLE, actY = XR_NULL_HANDLE;
-    XrAction actInvert = XR_NULL_HANDLE, actStick = XR_NULL_HANDLE;
+    XrAction actInvert = XR_NULL_HANDLE;
+    XrAction actLeftStick = XR_NULL_HANDLE, actRightStick = XR_NULL_HANDLE;
     ControllerState controllers;
     static glm::mat4 poseToViewMatrix(const XrPosef& pose);
     static glm::mat4 fovToProjectionMatrix(const XrFovf& fov, float nearZ, float farZ);

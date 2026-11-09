@@ -52,8 +52,10 @@ void Application::processInput() {
     if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) angleYZ += rotSpeed;
     if (glfwGetKey(window, GLFW_KEY_5) == GLFW_PRESS) angleYW += rotSpeed;
     if (glfwGetKey(window, GLFW_KEY_6) == GLFW_PRESS) angleZW += rotSpeed;
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) angleXZ -= rotSpeed;
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) angleXZ += rotSpeed;
 
-    // Kontrolery Oculus Touch: A/B/X/Y = obroty XW/YZ/YW/ZW, lewy grip odwraca kierunek, prawy drazek = os W
+    // Oculus Touch: lewa galka = XY/XZ, prawa galka X = YZ, prawa galka Y = os W.
     if (vrActive) {
         vr.syncControllers();
         const auto& c = vr.getControllerState();
@@ -62,7 +64,10 @@ void Application::processInput() {
         if (c.b) angleYZ += padRot;
         if (c.x) angleYW += padRot;
         if (c.y) angleZW += padRot;
-        if (std::abs(c.wAxis) > 0.15f) currentWOffset += c.wAxis * speed;
+        if (std::abs(c.leftStickX) > 0.15f) angleXY += c.leftStickX * padRot;
+        if (std::abs(c.leftStickY) > 0.15f) angleXZ -= c.leftStickY * padRot;
+        if (std::abs(c.rightStickX) > 0.15f) angleYZ += c.rightStickX * padRot;
+        if (std::abs(c.rightStickY) > 0.15f) currentWOffset += c.rightStickY * speed;
     }
 
     bool spaceIsPressed = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);

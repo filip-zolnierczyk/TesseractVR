@@ -221,7 +221,8 @@ void OpenXRManager::setupControllers() {
     makeAction(actX, "button_x", XR_ACTION_TYPE_BOOLEAN_INPUT);
     makeAction(actY, "button_y", XR_ACTION_TYPE_BOOLEAN_INPUT);
     makeAction(actInvert, "invert", XR_ACTION_TYPE_FLOAT_INPUT);
-    makeAction(actStick, "stick_y", XR_ACTION_TYPE_FLOAT_INPUT);
+    makeAction(actLeftStick, "left_stick", XR_ACTION_TYPE_VECTOR2F_INPUT);
+    makeAction(actRightStick, "right_stick", XR_ACTION_TYPE_VECTOR2F_INPUT);
 
     auto path = [&](const char* s) {
         XrPath p = XR_NULL_PATH;
@@ -234,7 +235,8 @@ void OpenXRManager::setupControllers() {
         {actX, path("/user/hand/left/input/x/click")},
         {actY, path("/user/hand/left/input/y/click")},
         {actInvert, path("/user/hand/left/input/squeeze/value")},
-        {actStick, path("/user/hand/right/input/thumbstick/y")},
+        {actLeftStick, path("/user/hand/left/input/thumbstick")},
+        {actRightStick, path("/user/hand/right/input/thumbstick")},
     };
     XrInteractionProfileSuggestedBinding sb{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
     sb.interactionProfile = path("/interaction_profiles/oculus/touch_controller");
@@ -275,12 +277,26 @@ void OpenXRManager::syncControllers() {
         if (XR_SUCCEEDED(xrGetActionStateFloat(session, &gi, &st)) && st.isActive) return st.currentState;
         return 0.0f;
     };
+    auto getVector = [&](XrAction a) {
+        XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
+        gi.action = a;
+        XrActionStateVector2f st{XR_TYPE_ACTION_STATE_VECTOR2F};
+        if (XR_SUCCEEDED(xrGetActionStateVector2f(session, &gi, &st)) && st.isActive) {
+            return glm::vec2(st.currentState.x, st.currentState.y);
+        }
+        return glm::vec2(0.0f);
+    };
+    const glm::vec2 leftStick = getVector(actLeftStick);
+    const glm::vec2 rightStick = getVector(actRightStick);
     controllers.a = getBool(actA);
     controllers.b = getBool(actB);
     controllers.x = getBool(actX);
     controllers.y = getBool(actY);
     controllers.invert = getFloat(actInvert) > 0.5f;
-    controllers.wAxis = getFloat(actStick);
+    controllers.leftStickX = leftStick.x;
+    controllers.leftStickY = leftStick.y;
+    controllers.rightStickX = rightStick.x;
+    controllers.rightStickY = rightStick.y;
 }
 
 VkExtent2D OpenXRManager::getEyeExtent(uint32_t eyeIndex) const {
