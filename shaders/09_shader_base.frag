@@ -16,33 +16,48 @@ layout(binding = 0) uniform UniformBufferObject {
     float aYW;
     float aZW;
 } ubo;
-// 4D plane rotations implemented as inplace transforms on vec4
+
+// ==========================================
+// CONFIGURATION SWITCHES
+// ==========================================
+#define SHAPE_ID 0      // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=torus, 6=cross-polytope
+#define RAYMARCH_MODE 0 // 0 = standard rayMarch, 1 = rayMarch_fast
+#define COLOR_MODE 3    // 0 = Normal-based face color
+                        // 1 = 4D Face color 
+                        // 2 = 4D Face color, jitter-free
+                        // 3 = Solid color
+
+// ==========================================
+// 4D PLANE ROTATIONS
+// ==========================================
 vec4 rotXY(vec4 p, float a) {
     float c = cos(a), s = sin(a);
-    return vec4(c*p.x - s*p.y, s*p.x + c*p.y, p.z, p.w);
+    return vec4(c * p.x - s * p.y, s * p.x + c * p.y, p.z, p.w);
 }
 vec4 rotXZ(vec4 p, float a) {
     float c = cos(a), s = sin(a);
-    return vec4(c*p.x - s*p.z, p.y, s*p.x + c*p.z, p.w);
+    return vec4(c * p.x - s * p.z, p.y, s * p.x + c * p.z, p.w);
 }
 vec4 rotXW(vec4 p, float a) {
     float c = cos(a), s = sin(a);
-    return vec4(c*p.x - s*p.w, p.y, p.z, s*p.x + c*p.w);
+    return vec4(c * p.x - s * p.w, p.y, p.z, s * p.x + c * p.w);
 }
 vec4 rotYZ(vec4 p, float a) {
     float c = cos(a), s = sin(a);
-    return vec4(p.x, c*p.y - s*p.z, s*p.y + c*p.z, p.w);
+    return vec4(p.x, c * p.y - s * p.z, s * p.y + c * p.z, p.w);
 }
 vec4 rotYW(vec4 p, float a) {
     float c = cos(a), s = sin(a);
-    return vec4(p.x, c*p.y - s*p.w, p.z, s*p.y + c*p.w);
+    return vec4(p.x, c * p.y - s * p.w, p.z, s * p.y + c * p.w);
 }
 vec4 rotZW(vec4 p, float a) {
     float c = cos(a), s = sin(a);
-    return vec4(p.x, p.y, c*p.z - s*p.w, s*p.z + c*p.w);
+    return vec4(p.x, p.y, c * p.z - s * p.w, s * p.z + c * p.w);
 }
 
-// 4D box (hypercube) SDF: generalization of 3D box SDF to 4D
+// ==========================================
+// 4D SDF PRIMITIVES
+// ==========================================
 float sdBox4(vec4 p, vec4 b) {
     vec4 d = abs(p) - b;
     vec4 mx = max(d, vec4(0.0));
@@ -51,7 +66,56 @@ float sdBox4(vec4 p, vec4 b) {
     return outside + inside;
 }
 
-// Wyciąga lokalny, obrócony punkt w 4D.
+float sdSphere4(vec4 p, float r) {
+    return length(p) - r;
+}
+
+float sdCapsule4(vec4 p, vec4 a, vec4 b, float r) {
+    vec4 pa = p - a;
+    vec4 ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h) - r;
+}
+
+float sdRoundedBox4(vec4 p, vec4 b, float r) {
+    return sdBox4(p, b) - r;
+}
+
+float sdEllipsoid4(vec4 p, vec4 r) {
+    vec4 q = p / r;
+    float scale = min(min(r.x, r.y), min(r.z, r.w));
+    return (length(q) - 1.0) * scale;
+}
+
+float sdCliffordTorus4(vec4 p, vec2 majorRadii, float tubeR) {
+    float a = length(p.xy) - majorRadii.x;
+    float b = length(p.zw) - majorRadii.y;
+    return length(vec2(a, b)) - tubeR;
+}
+
+float sdCrossPolytope4(vec4 p, float r) {
+    return (abs(p.x) + abs(p.y) + abs(p.z) + abs(p.w)) - r;
+}
+
+// ==========================================
+// SCENE MAPPING & LOCAL POINT EXTRACTION
+// ==========================================
+vec4 getLocalPoint_rot(vec3 p3) {
+    float wSlice = ubo.w_offset;
+    vec4 p = vec4(p3, wSlice);
+    p.xyz -= vec3(0.0, 0.0, -2.5);
+
+    float t = ubo.time;
+    p = rotXY(p, ubo.aXY); 
+    p = rotXZ(p, ubo.aXZ); 
+    p = rotXW(p, ubo.aXW + t * 0.45); 
+    p = rotYZ(p, ubo.aYZ); 
+    p = rotYW(p, ubo.aYW); 
+    p = rotZW(p, ubo.aZW);
+
+    return p;
+}
+
 vec4 getLocalPoint(vec3 p3) {
     float wSlice = ubo.w_offset;
     vec4 p = vec4(p3, wSlice);
@@ -68,28 +132,44 @@ vec4 getLocalPoint(vec3 p3) {
 }
 
 float mapScene(vec3 p3) {
-    float wSlice = ubo.w_offset;
-    vec4 q = vec4(p3, wSlice);
-    q.xyz -= vec3(0.0, 0.0, -2.5);
-
-    q = rotXY(q, ubo.aXY);
-    q = rotXZ(q, ubo.aXZ);
-    q = rotXW(q, ubo.aXW);
-    q = rotYZ(q, ubo.aYZ);
-    q = rotYW(q, ubo.aYW);
-    q = rotZW(q, ubo.aZW);
-
-    vec4 halfSize = vec4(0.2);
-    return sdBox4(q, halfSize);
+    vec4 p = getLocalPoint(p3);
+    
+    #if SHAPE_ID == 0
+        return sdBox4(p, vec4(0.45, 0.30, 0.20, 0.15));
+    #elif SHAPE_ID == 1
+        return sdSphere4(p, 0.45);
+    #elif SHAPE_ID == 2
+        return sdCapsule4(p, vec4(-0.35, 0.0, 0.0, 0.0), vec4(0.35, 0.0, 0.0, 0.0), 0.15);
+    #elif SHAPE_ID == 3
+        return sdRoundedBox4(p, vec4(0.35, 0.25, 0.18, 0.12), 0.06);
+    #elif SHAPE_ID == 4
+        return sdEllipsoid4(p, vec4(0.50, 0.35, 0.25, 0.20));
+    #elif SHAPE_ID == 5
+        return sdCliffordTorus4(p, vec2(0.35, 0.35), 0.10);
+    #else
+        return sdCrossPolytope4(p, 0.75);
+    #endif
 }
 
-// numeric normal computed by differentiating the slice SDF w.r.t x,y,z (w fixed)
+// ==========================================
+// NORMALS & RAYMARCHING
+// ==========================================
 vec3 getNormal(vec3 p) {
     float e = 1e-3;
     float dx = mapScene(p + vec3(e,0,0)) - mapScene(p - vec3(e,0,0));
     float dy = mapScene(p + vec3(0,e,0)) - mapScene(p - vec3(0,e,0));
     float dz = mapScene(p + vec3(0,0,e)) - mapScene(p - vec3(0,0,e));
     return normalize(vec3(dx, dy, dz));
+}
+
+vec4 getShapeHalfSize() {
+    #if SHAPE_ID == 0
+        return vec4(0.45, 0.30, 0.20, 0.15);
+    #elif SHAPE_ID == 3
+        return vec4(0.35, 0.25, 0.18, 0.12);
+    #else
+        return vec4(0.45); // Fallback / bounding estimate for non-box shapes
+    #endif
 }
 
 float rayMarch(vec3 ro, vec3 rd) {
@@ -107,24 +187,117 @@ float rayMarch(vec3 ro, vec3 rd) {
     return -1.0;
 }
 
-vec3 getFaceColor(vec4 localPoint, vec4 halfSize) {
-    vec4 faceCoordinate = abs(localPoint / halfSize);
+float rayMarch_fast(vec3 ro, vec3 rd) {
+    float t = 0.0;
+    const int MAX_STEPS = 200;
+    const float MAX_DIST = 50.0;
+    const float EPS = 1e-3;
+    const float MULT_START = 1.0;
+    const float MULT_GROWTH = 1.1;
+    float mult = MULT_START;
 
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        vec3 pos = ro + rd * t;
+        float d = mapScene(pos);
+
+        if (abs(d) < EPS) {
+            return t;
+        }
+
+        float prevT = t;
+        float stepDist = d * mult;
+        t += stepDist;
+
+        if (t > MAX_DIST) {
+            return -1.0;
+        }
+
+        if (d < 0.0) {
+            float a = prevT;
+            float b = t;
+
+            for (int j = 0; j < 8; ++j) {
+                float m = 0.5 * (a + b);
+                float dm = mapScene(ro + rd * m);
+
+                if (abs(dm) < EPS) {
+                    return m;
+                }
+
+                if (dm > 0.0) {
+                    a = m;
+                } else {
+                    b = m;
+                }
+            }
+
+            return 0.5 * (a + b);
+        }
+
+        if (mult < 1.7) {
+            mult *= MULT_GROWTH;
+        }
+    }
+
+    return -1.0;
+}
+
+// ==========================================
+// COLORING FUNCTIONS (Exchangeable)
+// ==========================================
+vec3 getNormalFaceColor(vec3 n) {
+    vec3 an = abs(n);
+    vec3 faceColor = vec3(0.7);
+    if (an.x > an.y && an.x > an.z) {
+        faceColor = (n.x > 0.0) ? vec3(1.0, 0.3, 0.3) : vec3(0.6, 0.2, 0.6);
+    } else if (an.y > an.x && an.y > an.z) {
+        faceColor = (n.y > 0.0) ? vec3(0.3, 1.0, 0.3) : vec3(0.2, 0.7, 0.7);
+    } else {
+        faceColor = (n.z > 0.0) ? vec3(0.3, 0.5, 1.0) : vec3(1.0, 0.95, 0.2);
+    }
+    return faceColor;
+}
+
+vec3 getFaceColor(vec4 local_p, vec4 halfSize) {
+    vec4 faceCoordinate = abs(local_p / halfSize);
     if (faceCoordinate.x >= faceCoordinate.y &&
         faceCoordinate.x >= faceCoordinate.z &&
         faceCoordinate.x >= faceCoordinate.w) {
-        return localPoint.x >= 0.0 ? vec3(1.0, 0.15, 0.15) : vec3(0.55, 0.02, 0.02);
+        return local_p.x >= 0.0 ? vec3(1.0, 0.15, 0.15) : vec3(0.55, 0.02, 0.02);
     }
     if (faceCoordinate.y >= faceCoordinate.z &&
         faceCoordinate.y >= faceCoordinate.w) {
-        return localPoint.y >= 0.0 ? vec3(0.15, 1.0, 0.15) : vec3(0.02, 0.55, 0.02);
+        return local_p.y >= 0.0 ? vec3(0.15, 1.0, 0.15) : vec3(0.02, 0.55, 0.02);
     }
     if (faceCoordinate.z >= faceCoordinate.w) {
-        return localPoint.z >= 0.0 ? vec3(0.15, 0.35, 1.0) : vec3(0.02, 0.08, 0.55);
+        return local_p.z >= 0.0 ? vec3(0.15, 0.35, 1.0) : vec3(0.02, 0.08, 0.55);
     }
-    return localPoint.w >= 0.0 ? vec3(1.0, 0.85, 0.05) : vec3(0.85, 0.3, 0.02);
+    return local_p.w >= 0.0 ? vec3(1.0, 0.85, 0.05) : vec3(0.85, 0.3, 0.02);
 }
 
+vec3 getStableFaceColor(vec4 local_p, vec4 halfSize) {
+    vec4 norm = abs(local_p / halfSize);
+    
+    float maxVal = max(max(norm.x, norm.y), max(norm.z, norm.w));
+    
+    if (maxVal == norm.x) {
+        return (local_p.x > 0.0) ? vec3(1.0, 0.3, 0.3) : vec3(0.6, 0.1, 0.1);
+    } else if (maxVal == norm.y) {
+        return (local_p.y > 0.0) ? vec3(0.3, 1.0, 0.3) : vec3(0.1, 0.6, 0.1);
+    } else if (maxVal == norm.z) {
+        return (local_p.z > 0.0) ? vec3(0.3, 0.5, 1.0) : vec3(0.1, 0.2, 0.7);
+    } else {
+        return (local_p.w > 0.0) ? vec3(1.0, 0.95, 0.2) : vec3(0.8, 0.5, 0.1);
+    }
+}
+
+vec3 getSolidColor() {
+    return vec3(0.2, 0.7, 0.9); // Clean flat cyan tone_
+}
+
+// ==========================================
+// MAIN FUNCTION
+// ==========================================
 void main() {
     mat4 invView = inverse(ubo.view);
     mat4 invProj = inverse(ubo.proj);
@@ -136,15 +309,35 @@ void main() {
     vec3 rayDirLocal = normalize(rayView.xyz / rayView.w);
     vec3 rd = normalize((invView * vec4(rayDirLocal, 0.0)).xyz);
 
-    float t = rayMarch(ro, rd);
+    #if RAYMARCH_MODE == 1
+        float t = rayMarch_fast(ro, rd);
+    #else
+        float t = rayMarch(ro, rd);
+    #endif
+
     if (t > 0.0) {
         vec3 p = ro + rd * t;
-        // Pobieramy "lokalny" kształt punktu, żeby sprawdzić na której ścianie 4D wylądowaliśmy
+        vec3 n = getNormal(p);
         vec4 local_p = getLocalPoint(p);
-        vec4 halfSize = vec4(0.2);
-        
-        vec3 faceColor = getFaceColor(local_p, halfSize);
-        outColor = vec4(faceColor, 1.0);
+        vec4 halfSize = getShapeHalfSize();
+
+        vec3 baseColor = vec3(0.7);
+
+        #if COLOR_MODE == 0
+            baseColor = getNormalFaceColor(n);
+        #elif COLOR_MODE == 1
+            baseColor = getFaceColor(local_p, halfSize);
+        #elif COLOR_MODE == 2
+            baseColor = getStableFaceColor(local_p, halfSize);
+        #else
+            baseColor = getSolidColor();
+        #endif
+
+        vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
+        float diff = max(dot(n, lightDir), 0.0);
+        vec3 col = baseColor * (0.25 + 0.75 * diff);
+
+        outColor = vec4(col, 1.0);
     } else {
         outColor = vec4(0.01, 0.01, 0.02, 1.0);
     }

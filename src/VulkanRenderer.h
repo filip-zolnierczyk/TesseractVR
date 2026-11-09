@@ -21,6 +21,7 @@ struct UniformBufferObject {
     alignas(8)  glm::vec2 resolution;   
     alignas(4)  float time;             
     alignas(4)  float w_offset;    
+    alignas(4)  float nearPlane;    // Dodane dla prawidłowej asymetrycznej projekcji
     alignas(4)  float aXY;
     alignas(4)  float aXZ;
     alignas(4)  float aXW;
