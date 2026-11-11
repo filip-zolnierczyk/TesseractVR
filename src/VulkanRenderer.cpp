@@ -67,6 +67,7 @@ void VulkanRenderer::cleanup() {
 
     cleanupSwapChain();
     vmaDestroyAllocator(allocator);
+    vkDestroyPipeline(device, hudPipeline, nullptr);
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
@@ -85,7 +86,7 @@ void VulkanRenderer::waitForIdle() {
     vkDeviceWaitIdle(device);
 }
 
-void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj,
+void VulkanRenderer::drawFrame(float time, float wOffset, float shapeId, const glm::mat4& view, const glm::mat4& proj,
                                float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
     vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
     vkResetFences(device, 1, &inFlightFence);
@@ -100,7 +101,7 @@ void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view,
     }
 
     vkResetCommandBuffer(commandBuffer, 0);
-    recordCommandBuffer(commandBuffer, imageIndex, swapChainExtent, 0, time, wOffset, view, proj, aXY, aXZ, aXW, aYZ, aYW, aZW);
+    recordCommandBuffer(commandBuffer, imageIndex, swapChainExtent, 0, time, wOffset, shapeId, view, proj, aXY, aXZ, aXW, aYZ, aYW, aZW);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -153,6 +154,7 @@ void VulkanRenderer::initVulkan() {
     createImageViews();
     createRenderPass();
     createGraphicsPipeline();
+    hudPipeline = createHudPipeline(renderPass);
     createFramebuffers();
     createUniformBuffer();
     createDescriptorPool();
@@ -404,6 +406,7 @@ void VulkanRenderer::recreateSwapChain() {
 
     cleanupSwapChain();
 
+    vkDestroyPipeline(device, hudPipeline, nullptr);
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
 
@@ -411,6 +414,7 @@ void VulkanRenderer::recreateSwapChain() {
     createImageViews();
     createRenderPass();
     createGraphicsPipeline();
+    hudPipeline = createHudPipeline(renderPass);
     createFramebuffers();
 }
 
@@ -591,6 +595,98 @@ void VulkanRenderer::createGraphicsPipeline() {
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
 }
 
+void VulkanRenderer::drawHud(VkCommandBuffer cmd, VkPipeline pipeline) {
+    // Wywolywane po scenie, z juz zbindowanym UBO (rozdzielczosc) oraz viewportem/scissorem.
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    // Wierzcholki 0-5: pasek, 6-11: panel ustawien (gdy widoczny)
+    vkCmdDraw(cmd, settingsPanelVisible ? 12 : 6, 1, 0, 0);
+}
+
+VkPipeline VulkanRenderer::createHudPipeline(VkRenderPass pass) {
+    auto vertCode = readFile("shaders/hud_vert.spv");
+    auto fragCode = readFile("shaders/hud_frag.spv");
+    VkShaderModule vertModule = createShaderModule(vertCode);
+    VkShaderModule fragModule = createShaderModule(fragCode);
+
+    VkPipelineShaderStageCreateInfo stages[2]{};
+    stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vertModule;
+    stages[0].pName = "main";
+    stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = fragModule;
+    stages[1].pName = "main";
+
+    VkPipelineVertexInputStateCreateInfo vertexInput{};
+    vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineColorBlendAttachmentState blendAttachment{};
+    blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    blendAttachment.blendEnable = VK_TRUE; // gotowe pod polprzezroczyste elementy UI
+    blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    blendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    blendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &blendAttachment;
+
+    VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = 2;
+    dynamicState.pDynamicStates = dynamicStates;
+
+    VkGraphicsPipelineCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    info.stageCount = 2;
+    info.pStages = stages;
+    info.pVertexInputState = &vertexInput;
+    info.pInputAssemblyState = &inputAssembly;
+    info.pViewportState = &viewportState;
+    info.pRasterizationState = &rasterizer;
+    info.pMultisampleState = &multisampling;
+    info.pColorBlendState = &colorBlending;
+    info.pDynamicState = &dynamicState;
+    info.layout = pipelineLayout;
+    info.renderPass = pass;
+    info.subpass = 0;
+
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create HUD pipeline!");
+    }
+
+    vkDestroyShaderModule(device, fragModule, nullptr);
+    vkDestroyShaderModule(device, vertModule, nullptr);
+    return pipeline;
+}
+
 void VulkanRenderer::createFramebuffers() {
     swapChainFramebuffers.resize(swapChainImageViews.size());
 
@@ -705,7 +801,7 @@ void VulkanRenderer::createCommandBuffer() {
     }
 }
 
-void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkExtent2D extent, uint32_t eyeIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
+void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkExtent2D extent, uint32_t eyeIndex, float time, float wOffset, float shapeId, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
     if (eyeIndex >= 2) {
         throw std::out_of_range("eye index must be 0 or 1");
     }
@@ -754,6 +850,10 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     ubo.aYZ = aYZ;
     ubo.aYW = aYW;
     ubo.aZW = aZW; 
+    ubo.shapeId = shapeId;
+    ubo.colorMode = settingsColorMode;
+    ubo.globalScale = settingsGlobalScale;
+    ubo.settingSelected = settingsSelected;
     
     memcpy(uniformBuffersMapped[eyeIndex], &ubo, sizeof(ubo));
     vmaFlushAllocation(allocator, uniformBufferAllocations[eyeIndex], 0, sizeof(ubo));
@@ -761,6 +861,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[eyeIndex], 0, nullptr);
 
     vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    drawHud(commandBuffer, hudPipeline);
 
     vkCmdEndRenderPass(commandBuffer);
 
@@ -1136,6 +1237,7 @@ void VulkanRenderer::initXrRenderTargets(VkFormat colorFormat, const std::vector
 
     createXrRenderPass();
     createXrGraphicsPipeline();
+    xrHudPipeline = createHudPipeline(xrRenderPass);
 
     xrImageViews.resize(imagesPerEye.size());
     xrFramebuffers.resize(imagesPerEye.size());
@@ -1257,10 +1359,12 @@ void VulkanRenderer::destroyXrRenderTargets() {
     xrFramebuffers.clear();
     xrImageViews.clear();
 
+    vkDestroyPipeline(device, xrHudPipeline, nullptr);
     vkDestroyPipeline(device, xrGraphicsPipeline, nullptr);
     vkDestroyRenderPass(device, xrRenderPass, nullptr);
 
     xrRenderPass = VK_NULL_HANDLE;
+    xrHudPipeline = VK_NULL_HANDLE;
     xrGraphicsPipeline = VK_NULL_HANDLE;
     xrFence = VK_NULL_HANDLE;
     xrCommandBuffer = VK_NULL_HANDLE;
@@ -1268,7 +1372,7 @@ void VulkanRenderer::destroyXrRenderTargets() {
     xrUniformBuffer = VK_NULL_HANDLE;
 }
 
-void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent, float time, float wOffset,
+void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent, float time, float wOffset, float shapeId,
                                   const glm::mat4& view, const glm::mat4& proj,
                                   float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
     if (xrFramebuffers[eyeIndex][imageIndex] == VK_NULL_HANDLE) {
@@ -1323,6 +1427,10 @@ void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExten
     ubo.aYZ = aYZ;
     ubo.aYW = aYW;
     ubo.aZW = aZW;
+    ubo.shapeId = shapeId;
+    ubo.colorMode = settingsColorMode;
+    ubo.globalScale = settingsGlobalScale;
+    ubo.settingSelected = settingsSelected;
 
     memcpy(xrUniformBufferMapped, &ubo, sizeof(ubo));
     vmaFlushAllocation(allocator, xrUniformBufferAllocation, 0, sizeof(ubo));
@@ -1341,6 +1449,7 @@ void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExten
     vkCmdSetScissor(xrCommandBuffer, 0, 1, &scissor);
 
     vkCmdDraw(xrCommandBuffer, 3, 1, 0, 0);
+    drawHud(xrCommandBuffer, xrHudPipeline);
     vkCmdEndRenderPass(xrCommandBuffer);
 
     if (vkEndCommandBuffer(xrCommandBuffer) != VK_SUCCESS) {

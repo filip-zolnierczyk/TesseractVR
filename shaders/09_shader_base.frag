@@ -9,23 +9,23 @@ layout(binding = 0) uniform UniformBufferObject {
     vec2 resolution;
     float time;
     float w_offset;
+    float nearPlane;
     float aXY;
     float aXZ;
     float aXW;
     float aYZ;
     float aYW;
     float aZW;
+    float shapeId;
+    float colorMode;       // 0 = normalne + swiatlo, 1 = sciany 4D, 2 = sciany 4D stabilne, 3 = jednolity
+    float globalScale;     // globalna skala figury
+    float settingSelected; // uzywane tylko przez HUD
 } ubo;
 
 // ==========================================
 // CONFIGURATION SWITCHES
 // ==========================================
-#define SHAPE_ID 0      // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=torus, 6=cross-polytope
 #define RAYMARCH_MODE 0 // 0 = standard rayMarch, 1 = rayMarch_fast
-#define COLOR_MODE 1    // 0 = Normal-based face color
-                        // 1 = 4D Face color 
-                        // 2 = 4D Face color, jitter-free
-                        // 3 = Solid color
 
 // ==========================================
 // 4D PLANE ROTATIONS
@@ -128,27 +128,30 @@ vec4 getLocalPoint(vec3 p3) {
     p = rotYW(p, ubo.aYW);
     p = rotZW(p, ubo.aZW);
     
-    return p;
+    // Skala globalna: punkt w ukladzie lokalnym figury dzielimy przez skale (spojne z getShapeHalfSize)
+    return p / ubo.globalScale;
 }
 
 float mapScene(vec3 p3) {
     vec4 p = getLocalPoint(p3);
+    float d;
     
-    #if SHAPE_ID == 0
-        return sdBox4(p, vec4(0.45, 0.30, 0.20, 0.15));
-    #elif SHAPE_ID == 1
-        return sdSphere4(p, 0.45);
-    #elif SHAPE_ID == 2
-        return sdCapsule4(p, vec4(-0.35, 0.0, 0.0, 0.0), vec4(0.35, 0.0, 0.0, 0.0), 0.15);
-    #elif SHAPE_ID == 3
-        return sdRoundedBox4(p, vec4(0.35, 0.25, 0.18, 0.12), 0.06);
-    #elif SHAPE_ID == 4
-        return sdEllipsoid4(p, vec4(0.50, 0.35, 0.25, 0.20));
-    #elif SHAPE_ID == 5
-        return sdCliffordTorus4(p, vec2(0.35, 0.35), 0.10);
-    #else
-        return sdCrossPolytope4(p, 0.75);
-    #endif
+    if (ubo.shapeId < 0.5) {
+        d = sdBox4(p, vec4(0.45, 0.30, 0.20, 0.15));
+    } else if (ubo.shapeId < 1.5) {
+        d = sdSphere4(p, 0.45);
+    } else if (ubo.shapeId < 2.5) {
+        d = sdCapsule4(p, vec4(-0.35, 0.0, 0.0, 0.0), vec4(0.35, 0.0, 0.0, 0.0), 0.15);
+    } else if (ubo.shapeId < 3.5) {
+        d = sdRoundedBox4(p, vec4(0.35, 0.25, 0.18, 0.12), 0.06);
+    } else if (ubo.shapeId < 4.5) {
+        d = sdEllipsoid4(p, vec4(0.50, 0.35, 0.25, 0.20));
+    } else if (ubo.shapeId < 5.5) {
+        d = sdCliffordTorus4(p, vec2(0.35, 0.35), 0.10);
+    } else {
+        d = sdCrossPolytope4(p, 0.75);
+    }
+    return d * ubo.globalScale;
 }
 
 // ==========================================
@@ -163,13 +166,13 @@ vec3 getNormal(vec3 p) {
 }
 
 vec4 getShapeHalfSize() {
-    #if SHAPE_ID == 0
+    if (ubo.shapeId < 0.5) {
         return vec4(0.45, 0.30, 0.20, 0.15);
-    #elif SHAPE_ID == 3
+    } else if (ubo.shapeId < 3.5) {
         return vec4(0.35, 0.25, 0.18, 0.12);
-    #else
+    } else {
         return vec4(0.45); // Fallback / bounding estimate for non-box shapes
-    #endif
+    }
 }
 
 float rayMarch(vec3 ro, vec3 rd) {
@@ -323,22 +326,22 @@ void main() {
 
         vec3 baseColor = vec3(0.7);
 
-        #if COLOR_MODE == 0
+        if (ubo.colorMode < 0.5) {
             baseColor = getNormalFaceColor(n);
-        #elif COLOR_MODE == 1
+        } else if (ubo.colorMode < 1.5) {
             baseColor = getFaceColor(local_p, halfSize);
-        #elif COLOR_MODE == 2
+        } else if (ubo.colorMode < 2.5) {
             baseColor = getStableFaceColor(local_p, halfSize);
-        #else
+        } else {
             baseColor = getSolidColor();
-        #endif
+        }
 
         vec3 col = baseColor;
-        #if COLOR_MODE == 0
+        if (ubo.colorMode < 0.5) {
             vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
             float diff = max(dot(n, lightDir), 0.0);
             col *= 0.25 + 0.75 * diff;
-        #endif
+        }
 
         outColor = vec4(col, 1.0);
     } else {

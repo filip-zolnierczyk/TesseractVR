@@ -26,16 +26,19 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE XR_USE_GRAPHICS_API_VULKAN)
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan glfw GPUOpen::VulkanMemoryAllocator glm::glm OpenXR::openxr_loader)
 
 add_custom_command(
-    OUTPUT ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv
+    OUTPUT ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/hud_vert.spv ${SHADERS_DIR}/hud_frag.spv
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
+    COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.0 -o ${SHADERS_DIR}/hud_vert.spv ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hud.vert
+    COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.0 -o ${SHADERS_DIR}/hud_frag.spv ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hud.frag
     COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.0 -o ${SHADERS_DIR}/vert.spv ${CMAKE_CURRENT_SOURCE_DIR}/shaders/09_shader_base.vert
     COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.0 -o ${SHADERS_DIR}/frag.spv ${CMAKE_CURRENT_SOURCE_DIR}/shaders/09_shader_base.frag
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/09_shader_base.vert ${CMAKE_CURRENT_SOURCE_DIR}/shaders/09_shader_base.frag
-    COMMENT "Compiling shaders"
+                ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hud.vert ${CMAKE_CURRENT_SOURCE_DIR}/shaders/hud.frag
+        COMMENT "Compiling shaders"
     VERBATIM
 )
 
-add_custom_target(shaders DEPENDS ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv)
+add_custom_target(shaders DEPENDS ${SHADERS_DIR}/vert.spv ${SHADERS_DIR}/frag.spv ${SHADERS_DIR}/hud_vert.spv ${SHADERS_DIR}/hud_frag.spv)
 add_dependencies(${PROJECT_NAME} shaders)
 
 

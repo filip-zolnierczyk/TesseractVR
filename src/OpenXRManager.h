@@ -8,6 +8,7 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <vector>
 #include <string>
@@ -42,14 +43,20 @@ public:
 
     void pollEvents();
 
-    // Stan kontrolerow Touch: przyciski A/B/X/Y, obie galki analogowe i lewy grip.
+    // Stan kontrolerow Touch: przyciski, galki oraz delty orientacji podczas chwytu.
     struct ControllerState {
         bool a = false, b = false, x = false, y = false;
-        bool invert = false;
+        bool menu = false; // przycisk ustawien (3 kreski) na lewym kontrolerze
+        bool leftTrigger = false;
+        bool rightTrigger = false;
+        bool leftGrip = false;
+        bool rightGrip = false;
         float leftStickX = 0.0f;
         float leftStickY = 0.0f;
         float rightStickX = 0.0f;
         float rightStickY = 0.0f;
+        glm::vec3 leftGripDelta = glm::vec3(0.0f);
+        glm::vec3 rightGripDelta = glm::vec3(0.0f);
     };
     void syncControllers();
     const ControllerState& getControllerState() const { return controllers; }
@@ -90,8 +97,17 @@ private:
 
     XrActionSet actionSet = XR_NULL_HANDLE;
     XrAction actA = XR_NULL_HANDLE, actB = XR_NULL_HANDLE, actX = XR_NULL_HANDLE, actY = XR_NULL_HANDLE;
-    XrAction actInvert = XR_NULL_HANDLE;
+        XrAction actMenu = XR_NULL_HANDLE;
+        XrAction actLeftGrip = XR_NULL_HANDLE, actRightGrip = XR_NULL_HANDLE;
+    XrAction actLeftTrigger = XR_NULL_HANDLE, actRightTrigger = XR_NULL_HANDLE;
     XrAction actLeftStick = XR_NULL_HANDLE, actRightStick = XR_NULL_HANDLE;
+    XrAction actLeftGripPose = XR_NULL_HANDLE, actRightGripPose = XR_NULL_HANDLE;
+    XrSpace leftGripSpace = XR_NULL_HANDLE, rightGripSpace = XR_NULL_HANDLE;
+    XrTime lastPredictedDisplayTime = 0;
+    glm::quat previousLeftGripOrientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    glm::quat previousRightGripOrientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    bool hasPreviousLeftGripOrientation = false;
+    bool hasPreviousRightGripOrientation = false;
     ControllerState controllers;
     static glm::mat4 poseToViewMatrix(const XrPosef& pose);
     static glm::mat4 fovToProjectionMatrix(const XrFovf& fov, float nearZ, float farZ);
