@@ -85,7 +85,7 @@ void VulkanRenderer::waitForIdle() {
     vkDeviceWaitIdle(device);
 }
 
-void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view, const glm::mat4& proj,
+void VulkanRenderer::drawFrame(float time, float wOffset, float shapeId, const glm::mat4& view, const glm::mat4& proj,
                                float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
     vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
     vkResetFences(device, 1, &inFlightFence);
@@ -100,7 +100,7 @@ void VulkanRenderer::drawFrame(float time, float wOffset, const glm::mat4& view,
     }
 
     vkResetCommandBuffer(commandBuffer, 0);
-    recordCommandBuffer(commandBuffer, imageIndex, swapChainExtent, 0, time, wOffset, view, proj, aXY, aXZ, aXW, aYZ, aYW, aZW);
+    recordCommandBuffer(commandBuffer, imageIndex, swapChainExtent, 0, time, wOffset, shapeId, view, proj, aXY, aXZ, aXW, aYZ, aYW, aZW);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -705,7 +705,7 @@ void VulkanRenderer::createCommandBuffer() {
     }
 }
 
-void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkExtent2D extent, uint32_t eyeIndex, float time, float wOffset, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
+void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, VkExtent2D extent, uint32_t eyeIndex, float time, float wOffset, float shapeId, const glm::mat4& view, const glm::mat4& proj, float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
     if (eyeIndex >= 2) {
         throw std::out_of_range("eye index must be 0 or 1");
     }
@@ -754,6 +754,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     ubo.aYZ = aYZ;
     ubo.aYW = aYW;
     ubo.aZW = aZW; 
+    ubo.shapeId = shapeId;
     
     memcpy(uniformBuffersMapped[eyeIndex], &ubo, sizeof(ubo));
     vmaFlushAllocation(allocator, uniformBufferAllocations[eyeIndex], 0, sizeof(ubo));
@@ -1268,7 +1269,7 @@ void VulkanRenderer::destroyXrRenderTargets() {
     xrUniformBuffer = VK_NULL_HANDLE;
 }
 
-void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent, float time, float wOffset,
+void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExtent2D extent, float time, float wOffset, float shapeId,
                                   const glm::mat4& view, const glm::mat4& proj,
                                   float aXY, float aXZ, float aXW, float aYZ, float aYW, float aZW) {
     if (xrFramebuffers[eyeIndex][imageIndex] == VK_NULL_HANDLE) {
@@ -1323,6 +1324,7 @@ void VulkanRenderer::renderXrEye(uint32_t eyeIndex, uint32_t imageIndex, VkExten
     ubo.aYZ = aYZ;
     ubo.aYW = aYW;
     ubo.aZW = aZW;
+    ubo.shapeId = shapeId;
 
     memcpy(xrUniformBufferMapped, &ubo, sizeof(ubo));
     vmaFlushAllocation(allocator, xrUniformBufferAllocation, 0, sizeof(ubo));

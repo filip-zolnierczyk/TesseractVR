@@ -9,20 +9,21 @@ layout(binding = 0) uniform UniformBufferObject {
     vec2 resolution;
     float time;
     float w_offset;
+    float nearPlane;
     float aXY;
     float aXZ;
     float aXW;
     float aYZ;
     float aYW;
     float aZW;
+    float shapeId;
 } ubo;
 
 // ==========================================
 // CONFIGURATION SWITCHES
 // ==========================================
-#define SHAPE_ID 0      // 0=box, 1=sphere, 2=capsule, 3=rounded box, 4=ellipsoid, 5=torus, 6=cross-polytope
 #define RAYMARCH_MODE 0 // 0 = standard rayMarch, 1 = rayMarch_fast
-#define COLOR_MODE 3    // 0 = Normal-based face color
+#define COLOR_MODE 1    // 0 = Normal-based face color
                         // 1 = 4D Face color 
                         // 2 = 4D Face color, jitter-free
                         // 3 = Solid color
@@ -134,21 +135,21 @@ vec4 getLocalPoint(vec3 p3) {
 float mapScene(vec3 p3) {
     vec4 p = getLocalPoint(p3);
     
-    #if SHAPE_ID == 0
+    if (ubo.shapeId < 0.5) {
         return sdBox4(p, vec4(0.45, 0.30, 0.20, 0.15));
-    #elif SHAPE_ID == 1
+    } else if (ubo.shapeId < 1.5) {
         return sdSphere4(p, 0.45);
-    #elif SHAPE_ID == 2
+    } else if (ubo.shapeId < 2.5) {
         return sdCapsule4(p, vec4(-0.35, 0.0, 0.0, 0.0), vec4(0.35, 0.0, 0.0, 0.0), 0.15);
-    #elif SHAPE_ID == 3
+    } else if (ubo.shapeId < 3.5) {
         return sdRoundedBox4(p, vec4(0.35, 0.25, 0.18, 0.12), 0.06);
-    #elif SHAPE_ID == 4
+    } else if (ubo.shapeId < 4.5) {
         return sdEllipsoid4(p, vec4(0.50, 0.35, 0.25, 0.20));
-    #elif SHAPE_ID == 5
+    } else if (ubo.shapeId < 5.5) {
         return sdCliffordTorus4(p, vec2(0.35, 0.35), 0.10);
-    #else
+    } else {
         return sdCrossPolytope4(p, 0.75);
-    #endif
+    }
 }
 
 // ==========================================
@@ -163,13 +164,13 @@ vec3 getNormal(vec3 p) {
 }
 
 vec4 getShapeHalfSize() {
-    #if SHAPE_ID == 0
+    if (ubo.shapeId < 0.5) {
         return vec4(0.45, 0.30, 0.20, 0.15);
-    #elif SHAPE_ID == 3
+    } else if (ubo.shapeId < 3.5) {
         return vec4(0.35, 0.25, 0.18, 0.12);
-    #else
+    } else {
         return vec4(0.45); // Fallback / bounding estimate for non-box shapes
-    #endif
+    }
 }
 
 float rayMarch(vec3 ro, vec3 rd) {
@@ -333,9 +334,12 @@ void main() {
             baseColor = getSolidColor();
         #endif
 
-        vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
-        float diff = max(dot(n, lightDir), 0.0);
-        vec3 col = baseColor * (0.25 + 0.75 * diff);
+        vec3 col = baseColor;
+        #if COLOR_MODE == 0
+            vec3 lightDir = normalize(vec3(0.5, 0.7, -0.2));
+            float diff = max(dot(n, lightDir), 0.0);
+            col *= 0.25 + 0.75 * diff;
+        #endif
 
         outColor = vec4(col, 1.0);
     } else {
