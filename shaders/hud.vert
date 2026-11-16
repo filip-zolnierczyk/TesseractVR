@@ -35,7 +35,13 @@ void main() {
     vec2 c = corners[gl_VertexIndex % 6];
     vec2 px = origin + c * size;
 
-    gl_Position = vec4(px / res * 2.0 - 1.0, 0.0, 1.0);
+    // Keep the HUD at a finite distance so each eye gets the correct stereo offset.
+    const float HUD_DEPTH = 1.5;
+    float ndcOffsetX = (px.x / res.x - 0.5) * 2.0;
+    float ndcOffsetY = (0.5 - px.y / res.y) * 2.0;
+    float viewX = ndcOffsetX * HUD_DEPTH / ubo.proj[0][0];
+    float viewY = ndcOffsetY * HUD_DEPTH / ubo.proj[1][1];
+    gl_Position = ubo.proj * vec4(viewX, viewY, -HUD_DEPTH, 1.0);
     localPx = c * size;
     barSizePx = size;
 }

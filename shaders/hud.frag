@@ -25,18 +25,6 @@ layout(binding = 0) uniform UniformBufferObject {
     float settingSelected;
 } ubo;
 
-// Nazwy figur (kody ASCII, wiersz na figure, dopelnione spacjami do 14 znakow); kolejnosc jak shapeId
-const int NAME_STRIDE = 14;
-const int NAME_LENS[7] = int[](3, 6, 7, 11, 9, 5, 14);
-const int NAMES[98] = int[](
-    66, 79, 88, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,                // BOX
-    83, 80, 72, 69, 82, 69, 32, 32, 32, 32, 32, 32, 32, 32,                // SPHERE
-    67, 65, 80, 83, 85, 76, 69, 32, 32, 32, 32, 32, 32, 32,                // CAPSULE
-    82, 79, 85, 78, 68, 69, 68, 32, 66, 79, 88, 32, 32, 32,                // ROUNDED BOX
-    69, 76, 76, 73, 80, 83, 79, 73, 68, 32, 32, 32, 32, 32,                // ELLIPSOID
-    84, 79, 82, 85, 83, 32, 32, 32, 32, 32, 32, 32, 32, 32,                // TORUS
-    67, 82, 79, 83, 83, 45, 80, 79, 76, 89, 84, 79, 80, 69                 // CROSS-POLYTOPE
-);
 // Czcionka 5x7 (tylko litery uzywane w nazwach figur, '-' i spacja); kazdy wiersz to 5 bitow
 int glyphRow(int ch, int y) {
     switch (ch) {
@@ -167,24 +155,5 @@ void main() {
         outColor = vec4(vec3(settingsPanelColor(localPx, barSizePx)), 1.0);
         return;
     }
-    const float DOT = 0.5 / 7.0; // tekst zajmuje 50% wysokosci paska
-
-    int shape = clamp(int(ubo.shapeId + 0.5), 0, 6);
-    int textLen = NAME_LENS[shape];
-
-    float dot_ = barSizePx.y * DOT;
-    float textW = (float(textLen) * 6.0 - 1.0) * dot_;
-    vec2 p = (localPx - vec2((barSizePx.x - textW) * 0.5, barSizePx.y * 0.25)) / dot_;
-
-    vec3 col = vec3(1.0);
-    if (p.x >= 0.0 && p.y >= 0.0 && p.y < 7.0) {
-        int cell = int(floor(p.x / 6.0));
-        float inCell = p.x - float(cell) * 6.0;
-        if (cell < textLen && inCell < 5.0) {
-            if (((glyphRow(NAMES[shape * NAME_STRIDE + cell], int(p.y)) >> (4 - int(inCell))) & 1) == 1) {
-                col = vec3(0.0);
-            }
-        }
-    }
-    outColor = vec4(col, 1.0);
+    outColor = vec4(1.0);
 }

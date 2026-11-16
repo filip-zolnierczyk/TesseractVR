@@ -330,11 +330,10 @@ vec3 renderCrossSectionMap3D(vec2 localUV) {
     }
 
     vec2 viewUV = vec2((localUV.x + 0.09) / 0.91, localUV.y);
-    vec3 ro = vec3(0.52, 0.45, 0.82);
-    vec3 forward = normalize(-ro);
-    vec3 right = normalize(cross(forward, vec3(0.0, 1.0, 0.0)));
-    vec3 up = cross(right, forward);
-    vec3 rd = normalize(forward * 1.65 + right * viewUV.x + up * viewUV.y);
+    mat4 invProj = inverse(ubo.proj);
+    vec4 rayView = invProj * vec4(viewUV, 1.0, 1.0);
+    vec3 rd = normalize(rayView.xyz / rayView.w);
+    vec3 ro = vec3(0.0, 0.0, 2.5);
 
     float tObj = -1.0;
     float t = 0.0;
@@ -411,7 +410,6 @@ void main() {
 
     if (uv.x >= mapMin.x && uv.x <= mapMax.x && uv.y >= mapMin.y && uv.y <= mapMax.y) {
         vec2 localUV = (uv - mapMin) / (mapMax - mapMin) * 2.0 - 1.0;
-        localUV.y = -localUV.y;
         outColor = vec4(renderCrossSectionMap3D(localUV), 1.0);
         return;
     }

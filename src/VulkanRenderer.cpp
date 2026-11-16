@@ -596,10 +596,14 @@ void VulkanRenderer::createGraphicsPipeline() {
 }
 
 void VulkanRenderer::drawHud(VkCommandBuffer cmd, VkPipeline pipeline) {
-    // Wywolywane po scenie, z juz zbindowanym UBO (rozdzielczosc) oraz viewportem/scissorem.
+    // Panel jest rysowany po scenie, z juz zbindowanym UBO oraz viewportem/scissorem.
+    if (!settingsPanelVisible) {
+        return;
+    }
+
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-    // Wierzcholki 0-5: pasek, 6-11: panel ustawien (gdy widoczny)
-    vkCmdDraw(cmd, settingsPanelVisible ? 12 : 6, 1, 0, 0);
+    // Wierzcholki 6-11 definiuja panel ustawien.
+    vkCmdDraw(cmd, 6, 1, 6, 0);
 }
 
 VkPipeline VulkanRenderer::createHudPipeline(VkRenderPass pass) {
