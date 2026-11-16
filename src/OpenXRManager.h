@@ -46,6 +46,7 @@ public:
     // Stan kontrolerow Touch: przyciski, galki oraz delty orientacji podczas chwytu.
     struct ControllerState {
         bool a = false, b = false, x = false, y = false;
+        bool menu = false; // przycisk ustawien (3 kreski) na lewym kontrolerze
         bool leftTrigger = false;
         bool rightTrigger = false;
         bool leftGrip = false;
@@ -96,6 +97,7 @@ private:
 
     XrActionSet actionSet = XR_NULL_HANDLE;
     XrAction actA = XR_NULL_HANDLE, actB = XR_NULL_HANDLE, actX = XR_NULL_HANDLE, actY = XR_NULL_HANDLE;
+    XrAction actMenu = XR_NULL_HANDLE;
     XrAction actLeftGrip = XR_NULL_HANDLE, actRightGrip = XR_NULL_HANDLE;
     XrAction actLeftTrigger = XR_NULL_HANDLE, actRightTrigger = XR_NULL_HANDLE;
     XrAction actLeftStick = XR_NULL_HANDLE, actRightStick = XR_NULL_HANDLE;

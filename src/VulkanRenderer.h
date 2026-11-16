@@ -29,6 +29,9 @@ struct UniformBufferObject {
     alignas(4)  float aYW;
     alignas(4)  float aZW;     
     alignas(4)  float shapeId;
+    alignas(4)  float colorMode;
+    alignas(4)  float globalScale;
+    alignas(4)  float settingSelected;
 };
 
 struct QueueFamilyIndices {
@@ -63,6 +66,13 @@ public:
     void cleanup();
     void waitForIdle();
 
+    // Panel ustawien (HUD): wlaczany/wylaczany z Application
+    void setSettingsPanelVisible(bool visible) { settingsPanelVisible = visible; }
+    void setRenderSettings(int colorMode, float globalScale, int selectedSetting) {
+        settingsColorMode = static_cast<float>(colorMode);
+        settingsGlobalScale = globalScale;
+        settingsSelected = static_cast<float>(selectedSetting);
+    }
     // --- GETTERY DLA MODUŁU OPENXR ---
     VkInstance       getInstance() const { return instance; }
     VkPhysicalDevice getPhysicalDevice() const { return physicalDevice; }
@@ -144,6 +154,17 @@ private:
 
     void createXrRenderPass();
     void createXrGraphicsPipeline();
+
+    bool settingsPanelVisible = false;
+    float settingsColorMode = 1.0f;
+    float settingsGlobalScale = 1.0f;
+    float settingsSelected = 0.0f;
+
+    // --- HUD (pasek head-locked, rysowany po scenie w przestrzeni ekranu) ---
+    VkPipeline hudPipeline = VK_NULL_HANDLE;    // desktop
+    VkPipeline xrHudPipeline = VK_NULL_HANDLE;  // oczy OpenXR
+    VkPipeline createHudPipeline(VkRenderPass pass);
+    void drawHud(VkCommandBuffer cmd, VkPipeline pipeline);
 
     // --- DEKLARACJE METOD PRYWATNYCH ---
     void initVulkan();

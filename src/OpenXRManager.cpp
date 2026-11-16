@@ -220,6 +220,7 @@ void OpenXRManager::setupControllers() {
     makeAction(actB, "button_b", XR_ACTION_TYPE_BOOLEAN_INPUT);
     makeAction(actX, "button_x", XR_ACTION_TYPE_BOOLEAN_INPUT);
     makeAction(actY, "button_y", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    makeAction(actMenu, "button_menu", XR_ACTION_TYPE_BOOLEAN_INPUT);
     makeAction(actLeftGrip, "left_grip", XR_ACTION_TYPE_FLOAT_INPUT);
     makeAction(actRightGrip, "right_grip", XR_ACTION_TYPE_FLOAT_INPUT);
     makeAction(actLeftTrigger, "left_trigger", XR_ACTION_TYPE_FLOAT_INPUT);
@@ -239,6 +240,7 @@ void OpenXRManager::setupControllers() {
         {actB, path("/user/hand/right/input/b/click")},
         {actX, path("/user/hand/left/input/x/click")},
         {actY, path("/user/hand/left/input/y/click")},
+        {actMenu, path("/user/hand/left/input/menu/click")},
         {actLeftGrip, path("/user/hand/left/input/squeeze/value")},
         {actRightGrip, path("/user/hand/right/input/squeeze/value")},
         {actLeftTrigger, path("/user/hand/left/input/trigger/value")},
@@ -314,6 +316,7 @@ void OpenXRManager::syncControllers() {
     controllers.b = getBool(actB);
     controllers.x = getBool(actX);
     controllers.y = getBool(actY);
+    controllers.menu = getBool(actMenu);
     controllers.leftGrip = getFloat(actLeftGrip) > 0.5f;
     controllers.rightGrip = getFloat(actRightGrip) > 0.5f;
     controllers.leftTrigger = getFloat(actLeftTrigger) > 0.5f;
