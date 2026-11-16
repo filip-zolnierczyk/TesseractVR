@@ -8,7 +8,7 @@ Minimalne repo pod inżynierkę: jedna aplikacja Vulkan, full-screen triangle i 
 - `src/Application.h/.cpp` - główna klasa aplikacji z obsługą wejścia (klawiszy 1-6).
 - `src/VulkanRenderer.h/.cpp` - warstwa renderowania Vulkan.
 - `shaders/09_shader_base.vert` - vertex shader dla full-screen triangle.
-- `shaders/09_shader_base.frag` - fragment shader z 4D hipersześcianem i rotacją w 6 płaszczyznach (XY, XZ, XW, YZ, YW, ZW).
+- `shaders/09_shader_base.frag` - fragment shader z figurami 4D, rotacją w 6 płaszczyznach (XY, XZ, XW, YZ, YW, ZW) oraz minimapą przekroju 3D.
 - `CMakeLists.txt` - konfiguracja builda.
 - `CMakePresets.json` - ustandaryzowane presety kompilacji dla całego zespołu.
 - `vcpkg.json` - manifest zależności.
@@ -98,6 +98,18 @@ Przytrzymaj "3" aby obrócić hipersześcian wokół osi XW
 Przytrzymaj "Shift + 5" aby obrócić w odwrotną stronę wokół osi YW
 ```
 
+## Minimapa przekroju 4D
+
+W prawym dolnym rogu ekranu wyświetlana jest minimapa 3D aktualnie wybranej figury 4D.
+Pokazuje ona podprzestrzeń **(X, Y, W)**, w której:
+
+- poziome osie minimapy odpowiadają osiom **X** i **Y** figury przy `Z = 0`,
+- pionowa oś odpowiada czwartej osi **W**,
+- przez bryłę przechodzi półprzezroczysta płaszczyzna `W = w_offset`,
+- pionowy pasek po prawej pokazuje zakres osi W i bieżące położenie przekroju.
+
+Minimapa korzysta z tych samych rotacji 4D, funkcji SDF i trybu kolorowania co główny widok.
+
 ## Rozwiązywanie problemów
 
 ### CMake nie może znaleźć vcpkg.cmake
@@ -116,5 +128,6 @@ Przytrzymaj "Shift + 5" aby obrócić w odwrotną stronę wokół osi YW
 
 - **Frontend**: GLFW (GLFW3) + Vulkan 1.0
 - **Renderowanie**: Full-screen triangle → Ray marching w 4D
-- **Shader**: Fragment shader implementuje ray marching z SDF (Signed Distance Field) dla 4D hipersześcianu
+- **Shader**: Fragment shader implementuje ray marching z SDF (Signed Distance Field) dla figur 4D oraz renderuje minimapę przekroju 3D
+- **Minimapa**: Widok `(X, Y, W)` z ruchomą płaszczyzną przekroju i wskaźnikiem osi W
 - **Kontrola**: Interaktywna rotacja w 6 niezależnych płaszczyznach 4D

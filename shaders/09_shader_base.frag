@@ -100,42 +100,20 @@ float sdCrossPolytope4(vec4 p, float r) {
 // ==========================================
 // SCENE MAPPING & LOCAL POINT EXTRACTION
 // ==========================================
-vec4 getLocalPoint_rot(vec3 p3) {
-    float wSlice = ubo.w_offset;
-    vec4 p = vec4(p3, wSlice);
-    p.xyz -= vec3(0.0, 0.0, -2.5);
-
-    float t = ubo.time;
-    p = rotXY(p, ubo.aXY); 
-    p = rotXZ(p, ubo.aXZ); 
-    p = rotXW(p, ubo.aXW + t * 0.45); 
-    p = rotYZ(p, ubo.aYZ); 
-    p = rotYW(p, ubo.aYW); 
-    p = rotZW(p, ubo.aZW);
-
-    return p;
-}
-
-vec4 getLocalPoint(vec3 p3) {
-    float wSlice = ubo.w_offset;
-    vec4 p = vec4(p3, wSlice);
-    p.xyz -= vec3(0.0, 0.0, -2.5);
-
+vec4 applyRotations4D(vec4 p) {
     p = rotXY(p, ubo.aXY);
     p = rotXZ(p, ubo.aXZ);
     p = rotXW(p, ubo.aXW);
     p = rotYZ(p, ubo.aYZ);
     p = rotYW(p, ubo.aYW);
     p = rotZW(p, ubo.aZW);
-    
-    // Skala globalna: punkt w ukladzie lokalnym figury dzielimy przez skale (spojne z getShapeHalfSize)
-    return p / ubo.globalScale;
+    return p;
 }
 
-float mapScene(vec3 p3) {
-    vec4 p = getLocalPoint(p3);
+float evalShape4D(vec4 p4) {
+    vec4 p = applyRotations4D(p4) / ubo.globalScale;
     float d;
-    
+
     if (ubo.shapeId < 0.5) {
         d = sdBox4(p, vec4(0.45, 0.30, 0.20, 0.15));
     } else if (ubo.shapeId < 1.5) {
@@ -152,6 +130,14 @@ float mapScene(vec3 p3) {
         d = sdCrossPolytope4(p, 0.75);
     }
     return d * ubo.globalScale;
+}
+
+float mapScene(vec3 p3) {
+    return evalShape4D(vec4(p3 - vec3(0.0, 0.0, -2.5), ubo.w_offset));
+}
+
+vec4 getLocalPoint(vec3 p3) {
+    return applyRotations4D(vec4(p3 - vec3(0.0, 0.0, -2.5), ubo.w_offset)) / ubo.globalScale;
 }
 
 // ==========================================
@@ -298,10 +284,138 @@ vec3 getSolidColor() {
     return vec3(0.2, 0.7, 0.9); // Clean flat cyan tone_
 }
 
+vec3 evalColor4D(vec4 p4) {
+    vec4 localP = applyRotations4D(p4) / ubo.globalScale;
+    vec4 halfSize = getShapeHalfSize();
+
+    if (ubo.colorMode < 1.5) {
+        return getFaceColor(localP, halfSize);
+    } else if (ubo.colorMode < 2.5) {
+        return getStableFaceColor(localP, halfSize);
+    }
+    return getSolidColor();
+}
+
+float mapMinimap3D(vec3 pMini) {
+    return evalShape4D(vec4(pMini.x, pMini.z, 0.0, pMini.y));
+}
+
+vec3 getMinimapNormal(vec3 p) {
+    float e = 1e-3;
+    float dx = mapMinimap3D(p + vec3(e, 0.0, 0.0)) - mapMinimap3D(p - vec3(e, 0.0, 0.0));
+    float dy = mapMinimap3D(p + vec3(0.0, e, 0.0)) - mapMinimap3D(p - vec3(0.0, e, 0.0));
+    float dz = mapMinimap3D(p + vec3(0.0, 0.0, e)) - mapMinimap3D(p - vec3(0.0, 0.0, e));
+    return normalize(vec3(dx, dy, dz));
+}
+
+vec3 renderCrossSectionMap3D(vec2 localUV) {
+    vec3 col = vec3(0.03, 0.03, 0.06);
+
+    if (localUV.x > 0.82) {
+        float wRange = 0.40;
+        float wCoord = localUV.y * wRange;
+        col = vec3(0.06, 0.07, 0.11);
+        if (abs(wCoord) <= 0.25 && abs(localUV.x - 0.90) < 0.035) {
+            col = vec3(0.18, 0.22, 0.32);
+        }
+        if (abs(wCoord) < 0.006 && abs(localUV.x - 0.90) < 0.055) {
+            col = vec3(0.4, 0.45, 0.55);
+        }
+        if (abs(wCoord - ubo.w_offset) < 0.012 && abs(localUV.x - 0.90) < 0.065) {
+            col = vec3(0.0, 0.95, 1.0);
+        }
+        if (abs(localUV.x - 0.82) < 0.008) col = vec3(0.25, 0.3, 0.4);
+        if (abs(localUV.x) > 0.96 || abs(localUV.y) > 0.96) col = vec3(0.45, 0.5, 0.65);
+        return col;
+    }
+
+    vec2 viewUV = vec2((localUV.x + 0.09) / 0.91, localUV.y);
+    vec3 ro = vec3(0.52, 0.45, 0.82);
+    vec3 forward = normalize(-ro);
+    vec3 right = normalize(cross(forward, vec3(0.0, 1.0, 0.0)));
+    vec3 up = cross(right, forward);
+    vec3 rd = normalize(forward * 1.65 + right * viewUV.x + up * viewUV.y);
+
+    float tObj = -1.0;
+    float t = 0.0;
+    for (int i = 0; i < 80; ++i) {
+        vec3 p = ro + rd * t;
+        float d = mapMinimap3D(p);
+        if (d < 1e-3) {
+            tObj = t;
+            break;
+        }
+        t += d;
+        if (t > 2.5) break;
+    }
+
+    float tPlane = (ubo.w_offset - ro.y) / rd.y;
+    vec3 pPlane = ro + rd * tPlane;
+    bool hitPlane = (tPlane > 0.0) && (max(abs(pPlane.x), abs(pPlane.z)) < 0.36);
+
+    if (tObj > 0.0) {
+        vec3 pObj = ro + rd * tObj;
+        vec3 n = getMinimapNormal(pObj);
+        vec3 objCol = evalColor4D(vec4(pObj.x, pObj.z, 0.0, pObj.y));
+        float diff = max(dot(n, normalize(vec3(0.6, 0.8, 0.5))), 0.0);
+        col = objCol * (0.30 + 0.70 * diff);
+        float distToCut = abs(pObj.y - ubo.w_offset);
+        if (distToCut < 0.007) {
+            col = vec3(1.0);
+        } else if (pObj.y > ubo.w_offset) {
+            col *= 0.50;
+        }
+    }
+
+    if (hitPlane) {
+        float dSlice = mapMinimap3D(pPlane);
+        if (tObj < 0.0 || tPlane < tObj || dSlice <= 0.005) {
+            vec3 planeCol = vec3(0.0, 0.75, 1.0);
+            float alpha = 0.25;
+            if (abs(fract(pPlane.x * 10.0) - 0.5) > 0.45 ||
+                abs(fract(pPlane.z * 10.0) - 0.5) > 0.45) {
+                alpha = 0.40;
+            }
+            if (max(abs(pPlane.x), abs(pPlane.z)) > 0.345) {
+                planeCol = vec3(0.3, 0.9, 1.0);
+                alpha = 0.85;
+            }
+            if (dSlice <= 0.0) {
+                vec3 sliceCol = evalColor4D(vec4(pPlane.x, pPlane.z, 0.0, pPlane.y));
+                planeCol = mix(sliceCol, vec3(1.0), 0.30);
+                alpha = (tObj > 0.0 && tPlane > tObj) ? 0.65 : 0.92;
+                if (dSlice > -0.009) {
+                    planeCol = vec3(1.0);
+                    alpha = 1.0;
+                }
+            }
+            col = mix(col, planeCol, alpha);
+        }
+    }
+
+    if (abs(localUV.x) > 0.96 || abs(localUV.y) > 0.96) {
+        col = vec3(0.45, 0.5, 0.65);
+    }
+    return col;
+}
+
 // ==========================================
 // MAIN FUNCTION
 // ==========================================
 void main() {
+    float aspect = (ubo.resolution.y > 0.0) ? (ubo.resolution.x / ubo.resolution.y) : (800.0 / 600.0);
+    float mapHeight = 0.32;
+    float mapWidth = mapHeight / aspect * 1.12;
+    vec2 mapMax = vec2(0.98, 0.97);
+    vec2 mapMin = mapMax - vec2(mapWidth, mapHeight);
+
+    if (uv.x >= mapMin.x && uv.x <= mapMax.x && uv.y >= mapMin.y && uv.y <= mapMax.y) {
+        vec2 localUV = (uv - mapMin) / (mapMax - mapMin) * 2.0 - 1.0;
+        localUV.y = -localUV.y;
+        outColor = vec4(renderCrossSectionMap3D(localUV), 1.0);
+        return;
+    }
+
     mat4 invView = inverse(ubo.view);
     mat4 invProj = inverse(ubo.proj);
     vec3 ro = invView[3].xyz;
